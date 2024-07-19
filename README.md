@@ -10,7 +10,7 @@
 python -m venv myenv
 source myenv/bin/activate
 cd app
-pip install requirements.txt
+pip install -r requirements.txt
 uvicorn main:app 
 ```
 
@@ -24,14 +24,14 @@ docker build -t datafog-api .
 
 ## Run
 ```sh
-docker run -p 80:8000  -it datafog-api  
+docker run -p 8000:8000  -it datafog-api  
 ```
 > [!TIP]
-> Change 80 to a new port if there is a conflict.
+> Change the first 8000 to a new port if there is a conflict.
 
 ## Test
 ```sh
-curl -X POST http://127.0.0.1:80/api/annotation/default \
+curl -X POST http://127.0.0.1:8000/api/annotation/default \
      -H "Content-Type: application/json" \
      -d '{"text": "My name is Peter Parker. I live in Queens, NYC. I work at the Daily Bugle."}'
 
