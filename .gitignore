@@ -1,0 +1,31 @@
+# ignore virtual environment
+venv/
+myenv/
+
+# ignore python bytecode files
+*.pyc
+*.pyo
+__pycache__/
+
+# ignore python package installs
+*.egg
+*.egg-info
+dist/
+build/
+
+# ignore test reports
+htmlcov/
+.tox/
+
+# ignore pycache folder
+.pycache/
+
+# ignore local development sqlite database
+db.sqlite3
+
+# ignore .env file
+.env
+
+# ignore local datafog-python
+datafog-python/
+*.coverage
