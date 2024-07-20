@@ -1,6 +1,6 @@
 """API REST endpoints"""
 
-from constants import VALID_CHARACTERS_PATTERN
+from constants import VALID_INPUT_PATTERN
 from datafog import DataFog
 from exception_handler import exception_processor
 from fastapi import Body, FastAPI, Request
@@ -14,9 +14,7 @@ df = DataFog()
 
 @app.post("/api/annotation/default")
 def annotate(
-    text: str = Body(
-        embed=True, min_length=1, max_length=1000, pattern=VALID_CHARACTERS_PATTERN
-    ),
+    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
     lang: str = Body(embed=True, default="EN"),
 ):
     """entry point for annotate functionality"""
@@ -29,9 +27,7 @@ def annotate(
 
 @app.post("/api/anonymize/non-reversible")
 def anonymize(
-    text: str = Body(
-        embed=True, min_length=1, max_length=1000, pattern=VALID_CHARACTERS_PATTERN
-    ),
+    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
     lang: str = Body(embed=True, default="EN"),
 ):
     """entry point for anonymize functionality"""

@@ -20,5 +20,5 @@ def validate_language(lang: str):
     """Check that the input is in the list of languages supported by DataFog"""
     if lang not in SUPPORTED_LANGUAGES:
         raise LanguageValidationError(
-            "Unsupported language request, please try a language listed in the DataFog documentation"
+            "Unsupported language request, please try a language listed in the DataFog docs"
         )

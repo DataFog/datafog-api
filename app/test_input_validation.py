@@ -18,6 +18,6 @@ def test_validate_language_unsupported():
     with pytest.raises(LanguageValidationError) as excinfo:
         validate_language(lang)
     assert (
-        "Unsupported language request, please try a language listed in the DataFog documentation"
+        "Unsupported language request, please try a language listed in the DataFog docs"
         == str(excinfo.value)
     )

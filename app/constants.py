@@ -3,7 +3,7 @@
 from enum import Enum
 
 # Define a regex pattern to encompass extended ASCII characters
-VALID_CHARACTERS_PATTERN = r"^[\x00-\xFF]+$"
+VALID_INPUT_PATTERN = r"^[\x00-\xFF]+$"
 
 # List of languages codes supported by DataFog
 SUPPORTED_LANGUAGES = ["EN"]

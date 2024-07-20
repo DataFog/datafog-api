@@ -7,7 +7,7 @@ from exception_handler import exception_processor
 from fastapi import status
 from fastapi.exceptions import RequestValidationError
 
-REGEX_MSG = "string contains characters beyond Extended ASCII which are not supported"
+REGEX_MSG = "string contains unsupported characters beyond the Extended ASCII set"
 REGEX_PATTERN = "Extended ASCII"
 
 
@@ -16,9 +16,7 @@ def test_exception_processor_status_code():
         [{"loc": ["body", "text"], "type": "value_error.str", "msg": "test error"}]
     )
     result = exception_processor(None, exc)
-    assert (
-        status.HTTP_422_UNPROCESSABLE_ENTITY == result.status_code
-    ), "incorrect status code"
+    assert status.HTTP_422_UNPROCESSABLE_ENTITY == result.status_code, "incorrect status code"
 
 
 def test_exception_processor_regex_override():

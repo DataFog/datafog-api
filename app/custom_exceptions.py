@@ -21,9 +21,7 @@ class LanguageValidationError(RequestValidationError):
         super().__init__(self.detail)
 
 
-def build_error_detail(
-    loc: list[str], error_type: str, msg: str, ctx: dict | None = None
-):
+def build_error_detail(loc: list[str], error_type: str, msg: str, ctx: dict | None = None):
     """Helper function to build the error body"""
     detail = {"loc": loc, "type": error_type, "msg": msg}
     if ctx:
