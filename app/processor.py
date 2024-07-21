@@ -25,21 +25,27 @@ def get_entities_from_pii(pii: dict[str, dict]) -> list:
     return sorted(entities, key=lambda d: d[ResponseKeys.START_IDX.value])
 
 
-def create_entities(original_text: str, pii_type: str, pii_list, seen_indices: set) -> list:
+def create_entities(
+    original_text: str, pii_type: str, pii_list, seen_indices: set
+) -> list:
     """Create an output list of PII entities from a list of PII of a particular type"""
     result = []
     start_index = 0
     for pii in pii_list:
         # for each pii in the input list find it in the original text and create an response
         # entity to add to the output list
-        result.append(create_entity(original_text, start_index, pii_type, pii, seen_indices))
+        result.append(
+            create_entity(original_text, start_index, pii_type, pii, seen_indices)
+        )
         # begin the search for the next PII at the next character after the end of the PII
         # just added to the output by updating startIndex
         start_index = result[-1][ResponseKeys.END_IDX.value] + 1
     return result
 
 
-def create_entity(text: str, start_index: int, pii_type: str, pii: str, seen: set) -> dict:
+def create_entity(
+    text: str, start_index: int, pii_type: str, pii: str, seen: set
+) -> dict:
     """Create an output PII entity from a singular datafog library result"""
     # TODO: fail gracefully if we cant find the pii in the original text
     start, end = find_pii_in_text(text, start_index, pii, seen)
@@ -52,7 +58,9 @@ def create_entity(text: str, start_index: int, pii_type: str, pii: str, seen: se
     return result
 
 
-def find_pii_in_text(text: str, start_index: int, pii: str, seen: set) -> tuple[int, int]:
+def find_pii_in_text(
+    text: str, start_index: int, pii: str, seen: set
+) -> tuple[int, int]:
     """Find pii in the original text and return the start and end index"""
     start = None
     end = None
