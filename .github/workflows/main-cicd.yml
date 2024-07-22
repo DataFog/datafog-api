@@ -44,3 +44,7 @@ jobs:
           cd app && pytest
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag datafog-api:$(date +%s)
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4.0.1
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}

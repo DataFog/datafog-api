@@ -16,7 +16,9 @@ def test_exception_processor_status_code():
         [{"loc": ["body", "text"], "type": "value_error.str", "msg": "test error"}]
     )
     result = exception_processor(None, exc)
-    assert status.HTTP_422_UNPROCESSABLE_ENTITY == result.status_code, "incorrect status code"
+    assert (
+        status.HTTP_422_UNPROCESSABLE_ENTITY == result.status_code
+    ), "incorrect status code"
 
 
 def test_exception_processor_regex_override():

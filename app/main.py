@@ -14,7 +14,9 @@ df = DataFog()
 
 @app.post("/api/annotation/default")
 def annotate(
-    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
+    text: str = Body(
+        embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN
+    ),
     lang: str = Body(embed=True, default="EN"),
 ):
     """entry point for annotate functionality"""
@@ -27,7 +29,9 @@ def annotate(
 
 @app.post("/api/anonymize/non-reversible")
 def anonymize(
-    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
+    text: str = Body(
+        embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN
+    ),
     lang: str = Body(embed=True, default="EN"),
 ):
     """entry point for anonymize functionality"""
