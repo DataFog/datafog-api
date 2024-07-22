@@ -1,7 +1,6 @@
 """Unit tests for processor.py"""
 
-from processor import (anonymize_pii_for_output, find_pii_in_text,
-                       format_pii_for_output)
+from processor import anonymize_pii_for_output, find_pii_in_text, format_pii_for_output
 
 
 def test_format_pii_for_output():

@@ -1,7 +1,10 @@
 """Unit tests for custom_exceptions.py"""
 
-from custom_exceptions import (CustomExceptionTypes, LanguageValidationError,
-                               build_error_detail)
+from custom_exceptions import (
+    CustomExceptionTypes,
+    LanguageValidationError,
+    build_error_detail,
+)
 
 
 def test_build_error_detail_with_ctx():

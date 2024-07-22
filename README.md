@@ -58,7 +58,7 @@ docker run -p 8000:8000  -it datafog-api
 Request:
 
 ```sh
-curl -X POST http://127.0.0.1:80/api/annotation/default \
+curl -X POST http://127.0.0.1:8000/api/annotation/default \
      -H "Content-Type: application/json" \
      -d '{"text": "My name is Peter Parker. I live in Queens, NYC. I work at the Daily Bugle."}'
 ```
@@ -81,7 +81,7 @@ Response:
 Request:
 
 ```sh
-curl -X POST http://0.0.0.0:80/api/anonymize/non-reversible \
+curl -X POST http://127.0.0.1:8000/api/anonymize/non-reversible \
      -H "Content-Type: application/json" \
      -d '{"text": "My name is Peter Parker. I live in Queens, NYC. I work at the Daily Bugle."}'
 ```
@@ -114,15 +114,11 @@ cd datafog-api/
 python -m venv myenv
 source myenv/bin/activate
 cd app
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
 uvicorn main:app
 ```
 
-> **NOTE** datafog-api requires Python 3.11+
-
-## Contributing
-
-DataFog is a community-driven **open-source** platform and we've been fortunate to have a small and growing contributor base. We'd love to hear ideas, feedback, suggestions for improvement - anything on your mind about what you think can be done to make DataFog better! Join our [Discord](https://discord.gg/bzDth394R4) and be a part of our growing community.
+> **NOTE** datafog-api requires Python 3.11+. If you need compatibility with a specific version, contact the dev team at hi@datafog.ai.
 
 ### Contributors
 
