@@ -52,7 +52,8 @@ docker run -p 8000:8000  -it datafog-api
 > **NOTE** Change the first 8000 to a new port if there is a conflict.
 
 ## Documentation
-You can access a user-friendly documentation site by navigating to ```127.0.0.1:8000/redoc``` 
+
+You can access a user-friendly documentation site by navigating to `127.0.0.1:8000/redoc`
 
 ## Example cURL request/responses
 
