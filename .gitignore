@@ -29,3 +29,6 @@ db.sqlite3
 # ignore local datafog-python
 datafog-python/
 *.coverage
+
+# ignore node_modules
+node_modules/
