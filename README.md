@@ -118,7 +118,7 @@ pip install -r requirements-dev.txt
 uvicorn main:app
 ```
 
-> **NOTE** datafog-api requires Python 3.11+. If you require support for other versions, please email us at hi@datafog.ai. 
+> **NOTE** datafog-api requires Python 3.11+. If you require support for other versions, please email us at hi@datafog.ai.
 
 ### Contributors
 
