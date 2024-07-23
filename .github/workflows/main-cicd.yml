@@ -41,6 +41,13 @@ jobs:
           pip install -r app/requirements-dev.txt
       - name: Test with pytest with coverage minimum
         run: |
-          cd app && pytest
+          cd app && pytest --cov-report term --cov-report xml:coverage.xml
       - name: Build the Docker image
         run: docker build . --file Dockerfile --tag datafog-api:$(date +%s)
+      - name: Submit to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./app/coverage.xml
+          flags: unittests
+          name: codecov-umbrella
