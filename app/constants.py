@@ -8,6 +8,9 @@ VALID_INPUT_PATTERN = r"^[\x00-\xFF]+$"
 # List of languages codes supported by DataFog
 SUPPORTED_LANGUAGES = ["EN"]
 
+AUTH_ENABLED_KEY = "DATAFOG_AUTH_ENABLED"
+USER_KEY = "DATAFOG_AUTH_USER"
+PASSWORD_KEY = "DATAFOG_PASSWORD"
 
 class ResponseKeys(Enum):
     """Define API response headers as an enum"""
