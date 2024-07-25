@@ -35,8 +35,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ..
-          file: ../Dockerfile
+          context: .
+          file: ./Dockerfile
           push: true
           tags: datafog/datafog-api:latest,datafog/datafog-api:${{ github.run_number }},datafog/datafog-api:1-latest
           platforms: linux/amd64,linux/arm64/v8
