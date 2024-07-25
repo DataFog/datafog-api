@@ -83,7 +83,7 @@ def test_encode_pii_for_output():
     }
     salt = "hello what about this"
     out = encode_pii_for_output(data, salt)
-    correct_text = "563ab3ceed81014fe6c2e8b41dac1f4f lives in 6f1a3150659516bb13192915c3a8df66"
+    text = "[563ab3ceed81014fe6c2e8b41dac1f4f] lives in [6f1a3150659516bb13192915c3a8df66]"
     assert (
-        out["text"] == correct_text
+        out["text"] == text
     ), "text anonymized incorrectly"
