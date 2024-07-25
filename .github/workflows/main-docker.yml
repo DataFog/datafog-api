@@ -45,7 +45,7 @@ jobs:
       - name: Update Docker Hub README
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
-          DOCKER_ACCESS_TOKEN: ${{ secrets.DOCKERHUB_PASSWORD }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
         run: |
           # Get the current README.md content
           README_CONTENT=$(cat README.md)
@@ -56,5 +56,12 @@ jobs:
           # Create JSON payload
           JSON_PAYLOAD=$(jq -n --arg msg "$README_CONTENT" '{"full_description": $msg}')
 
-          # Send a PATCH request to update the description
-          curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: JWT $(curl -s -H "Content-Type: application/json" -X POST -d "{\"username\": \"$DOCKER_USERNAME\", \"password\": \"$DOCKER_ACCESS_TOKEN\"}" https://hub.docker.com/v2/users/login/ | jq -r .token)" -d "$JSON_PAYLOAD" $API_URL
+          TOKEN=$(curl -s -H "Content-Type: application/json" \
+            -X POST \
+            -d "{\"username\": \"$DOCKER_USERNAME\", \"password\": \"$DOCKER_PASSWORD\"}" \
+            https://hub.docker.com/v2/users/login/ | jq -r .token)
+
+          curl -s -X PATCH \
+            -H "Content-Type: application/json" \
+            -H "Authorization: JWT $TOKEN" \
+            -d "$JSON_PAYLOAD" $API_URL
