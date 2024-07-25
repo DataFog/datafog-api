@@ -6,15 +6,14 @@
     <b>REST API for PII detection and anonymization</b>. <br />
 </p>
 
-<p align="center">
-
-<a href="https://hub.docker.com/r/datafog/datafog-api"><img src="https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
-
-<a href="https://discord.gg/bzDth394R4"><img src="https://img.shields.io/discord/1173803135341449227?style=flat" alt="Discord"></a>
-
-<a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg?style=flat-square" alt="Code style: black"></a>
-
-  <!-- <a href="https://codecov.io/gh/datafog/datafog-api"><img src="https://img.shields.io/codecov/c/github/datafog/datafog-api.svg?style=flat-square" alt="codecov"></a> -->
+<div align="center">
+     <a href="https://hub.docker.com/r/datafog/datafog-api"><img src="https://img.shields.io/badge/Docker-2CA5E0?style=for-the-badge&logo=docker&logoColor=white" alt="Docker"></a>
+     <a href="https://discord.gg/bzDth394R4"><img src="https://img.shields.io/discord/1173803135341449227?style=flat" alt="Discord"></a>
+     <a href="https://codecov.io/gh/datafog/datafog-api"><img src="https://img.shields.io/codecov/c/github/datafog/datafog-api.svg?style=flat-square" alt="codecov"></a>
+     <a href="https://github.com/pre-commit/pre-commit">
+     <img src="https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit" alt="pre-commit" style="max-width:100%;"></a>
+     <a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg?style=flat-square" alt="Code style: black"></a>
+</div>
 
 ## Overview
 
