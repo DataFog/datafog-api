@@ -15,8 +15,6 @@
      <a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg?style=flat-square" alt="Code style: black"></a>
 </div>
 
-
-
 ## Overview
 
 datafog-api is a REST API service that lets you detect ('annotate'), and anonymize sensitive information in your data using specialized ML models.
