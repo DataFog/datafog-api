@@ -160,7 +160,7 @@ def encode_pii_in_text(pii_entities: list, text: str, salt: str) -> tuple[str, d
         start = ent[ResponseKeys.START_IDX.value] - offset
         stop = ent[ResponseKeys.END_IDX.value] - offset
         # substitute into text subtracting offset
-        text = text[:start] + md5_hash + text[stop:]
+        text = text[:start] + "[" + md5_hash  + "]" + text[stop:]
         # update offset to account for the new string
         offset = original_text_length - len(text)
 
