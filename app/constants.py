@@ -17,3 +17,4 @@ class ResponseKeys(Enum):
     START_IDX = "start"
     END_IDX = "end"
     ENTITY_TYPE = "type"
+    LOOKUP_TABLE = "lookup_table"
