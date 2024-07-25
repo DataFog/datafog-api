@@ -1,5 +1,5 @@
 """Collection of functional hooks that leverage specialized classes"""
-
+import hashlib
 from constants import ResponseKeys
 
 
@@ -132,3 +132,40 @@ def anonymize_pii_in_text(pii_entities: list, text: str) -> str:
         offset = original_text_length - len(text)
 
     return text
+
+
+def encode_pii_for_output(pii: dict[str, dict], salt: str) -> dict:
+    """Anonymize the provided entities in the text and return lookup table for decoding"""
+    original_text = list(pii.keys())[0]  # original text fed to datafog library
+    entities = get_entities_from_pii(pii)
+    encoded_text, lookup_table = encode_pii_in_text(entities, original_text, salt)
+    response = {
+        ResponseKeys.PII_TEXT.value: encoded_text,
+        ResponseKeys.LOOKUP_TABLE.value: lookup_table,
+    }
+    return response
+
+
+def encode_pii_in_text(pii_entities: list, text: str, salt: str) -> tuple[str, dict]:
+    """Remove PII from original text, replace with md5 hash and reversal information"""
+    offset = 0  # track the changes in length of the text
+    original_text_length = len(text)
+    lookup_table = {}
+    for ent in pii_entities:
+        pii = ent[ResponseKeys.PII_TEXT.value]
+        pii_type = ent[ResponseKeys.ENTITY_TYPE.value]
+        md5_hash = hashlib.md5((pii_type + pii + salt).encode()).hexdigest()
+        # calculate the new start and stop indices to account for the updates so far
+        start = ent[ResponseKeys.START_IDX.value] - offset
+        stop = ent[ResponseKeys.END_IDX.value] - offset
+        # substitute into text subtracting offset
+        text = text[:start] + md5_hash + text[stop:]
+        # update offset to account for the new string
+        offset = original_text_length - len(text)
+
+        lookup_table[md5_hash] = {
+            ResponseKeys.ENTITY_TYPE.value: pii_type,
+            ResponseKeys.PII_TEXT.value: pii
+        }
+
+    return (text, lookup_table)

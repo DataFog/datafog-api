@@ -6,7 +6,7 @@ from exception_handler import exception_processor
 from fastapi import Body, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from input_validation import validate_annotate, validate_anonymize
-from processor import anonymize_pii_for_output, format_pii_for_output
+from processor import anonymize_pii_for_output, encode_pii_for_output, format_pii_for_output
 
 app = FastAPI()
 df = DataFog()
@@ -35,6 +35,20 @@ def anonymize(
     validate_anonymize(lang)
     result = df.run_text_pipeline_sync([text])
     output = anonymize_pii_for_output(result)
+    return output
+
+
+@app.post("/api/anonymize/reversible")
+def encode(
+    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
+    lang: str = Body(embed=True, default="EN"),
+    salt: str = Body(embed=True, min_length=16, max_length=64),
+):
+    """entry point for reversible anonymize functionality"""
+    # Use the custom validation imported above, currently only lang requires custom validation
+    validate_anonymize(lang)
+    result = df.run_text_pipeline_sync([text])
+    output = encode_pii_for_output(result, salt)
     return output
 
 

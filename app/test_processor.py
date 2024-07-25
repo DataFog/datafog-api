@@ -1,6 +1,11 @@
 """Unit tests for processor.py"""
 
-from processor import anonymize_pii_for_output, find_pii_in_text, format_pii_for_output
+from processor import (
+    anonymize_pii_for_output,
+    encode_pii_for_output,
+    find_pii_in_text,
+    format_pii_for_output
+)
 
 
 def test_format_pii_for_output():
@@ -63,4 +68,21 @@ def test_anonymize_pii():
     out = anonymize_pii_for_output(data)
     assert (
         out["text"] == "My name is [PER]. I live in [LOC], [LOC]. I work at [ORG]."
+    ), "text anonymized incorrectly"
+
+
+def test_encode_pii_for_output():
+    data = {
+        "Peter Parker lives in NYC": {
+            "DATE_TIME": [],
+            "LOC": ["NYC"],
+            "NRP": [],
+            "ORG": [],
+            "PER": ["Peter Parker"],
+        }
+    }
+    salt = "hello what about this"
+    out = encode_pii_for_output(data, salt)
+    assert (
+        out["text"] == "563ab3ceed81014fe6c2e8b41dac1f4f lives in 6f1a3150659516bb13192915c3a8df66"
     ), "text anonymized incorrectly"
