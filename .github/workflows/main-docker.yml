@@ -2,8 +2,6 @@
 name: Main Docker
 
 on:
-  pull_request:
-    branches: ["dev"]
   workflow_run:
     workflows: ["Main and Dev CICD datafog-api app"]
     branches:
