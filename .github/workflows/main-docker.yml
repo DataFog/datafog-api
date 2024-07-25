@@ -2,6 +2,8 @@
 name: Main Docker
 
 on:
+  pull_request:
+    branches: ["dev"]
   workflow_run:
     workflows: ["Main and Dev CICD datafog-api app"]
     branches:
@@ -40,3 +42,19 @@ jobs:
           platforms: linux/amd64,linux/arm64/v8
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
+      - name: Update Docker Hub README
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_ACCESS_TOKEN: ${{ secrets.DOCKERHUB_PASSWORD }}
+        run: |
+          # Get the current README.md content
+          README_CONTENT=$(cat README.md)
+  
+          # Define the Docker Hub API URL
+          API_URL="https://hub.docker.com/v2/repositories/datafog/datafog-api/"
+  
+          # Create JSON payload
+          JSON_PAYLOAD=$(jq -n --arg msg "$README_CONTENT" '{"full_description": $msg}')
+  
+          # Send a PATCH request to update the description
+          curl -s -X PATCH -H "Content-Type: application/json" -H "Authorization: JWT $(curl -s -H "Content-Type: application/json" -X POST -d "{\"username\": \"$DOCKER_USERNAME\", \"password\": \"$DOCKER_ACCESS_TOKEN\"}" https://hub.docker.com/v2/users/login/ | jq -r .token)" -d "$JSON_PAYLOAD" $API_URL
