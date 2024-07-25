@@ -1,5 +1,6 @@
 """Collection of functional hooks that leverage specialized classes"""
 import hashlib
+
 from constants import ResponseKeys
 
 

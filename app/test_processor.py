@@ -4,7 +4,7 @@ from processor import (
     anonymize_pii_for_output,
     encode_pii_for_output,
     find_pii_in_text,
-    format_pii_for_output
+    format_pii_for_output,
 )
 
 
@@ -83,6 +83,7 @@ def test_encode_pii_for_output():
     }
     salt = "hello what about this"
     out = encode_pii_for_output(data, salt)
+    correct_text = "563ab3ceed81014fe6c2e8b41dac1f4f lives in 6f1a3150659516bb13192915c3a8df66"
     assert (
-        out["text"] == "563ab3ceed81014fe6c2e8b41dac1f4f lives in 6f1a3150659516bb13192915c3a8df66"
+        out["text"] == correct_text
     ), "text anonymized incorrectly"

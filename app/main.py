@@ -6,7 +6,11 @@ from exception_handler import exception_processor
 from fastapi import Body, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from input_validation import validate_annotate, validate_anonymize
-from processor import anonymize_pii_for_output, encode_pii_for_output, format_pii_for_output
+from processor import (
+    anonymize_pii_for_output,
+    encode_pii_for_output,
+    format_pii_for_output,
+)
 
 app = FastAPI()
 df = DataFog()
