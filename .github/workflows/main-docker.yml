@@ -44,7 +44,7 @@ jobs:
           cache-to: type=local,dest=/tmp/.buildx-cache
       - name: Update Docker Hub README
         env:
-          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKER_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
         run: |
           # Get the current README.md content
