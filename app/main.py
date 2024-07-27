@@ -3,6 +3,7 @@
 import json
 import os
 import secrets
+from typing import Optional
 
 from datafog import DataFog
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, status
@@ -18,40 +19,16 @@ from processor import (
     format_pii_for_output,
 )
 
+AUTH_ENABLED = os.getenv(AUTH_ENABLED_KEY, "false").lower() == "true"
+security = HTTPBasic() if AUTH_ENABLED else lambda: None
 app = FastAPI()
-security = HTTPBasic()
 df = DataFog()
 
-AUTH_ENABLED = os.getenv(AUTH_ENABLED_KEY, "false").lower() == "true"
 
-
-@app.post("/api/annotation/default")
-def annotate(
-    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
-    lang: str = Body(embed=True, default="EN"),
-):
-    """entry point for annotate functionality"""
-    # Use the custom validation imported above, currently only lang requires custom validation
-    validate_annotate(lang)
-    result = df.run_text_pipeline_sync([text])
-    output = format_pii_for_output(result)
-    return output
-
-
-@app.post("/api/anonymize/non-reversible")
-def anonymize(
-    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
-    lang: str = Body(embed=True, default="EN"),
-):
-    """entry point for anonymize functionality"""
-    # Use the custom validation imported above, currently only lang requires custom validation
-    validate_anonymize(lang)
-    result = df.run_text_pipeline_sync([text])
-    output = anonymize_pii_for_output(result)
-    return output
-
-
-def get_authorization(credentials: HTTPBasicCredentials = Depends(security)):
+def get_authorization(credentials: Optional[HTTPBasicCredentials] = Depends(security)):
+    """Helper function to validate user authorization"""
+    if (credentials is None):
+        return None
     try:
         authorized_user_bytes = os.environ[USER_KEY].encode("utf8")
         password_bytes = os.environ[PASSWORD_KEY].encode("utf8")
@@ -63,9 +40,7 @@ def get_authorization(credentials: HTTPBasicCredentials = Depends(security)):
         current_username_bytes, authorized_user_bytes
     )
     current_password_bytes = credentials.password.encode("utf8")
-    is_correct_password = secrets.compare_digest(
-        current_password_bytes, password_bytes
-    )
+    is_correct_password = secrets.compare_digest(current_password_bytes, password_bytes)
 
     if not (is_correct_username and is_correct_password):
         raise HTTPException(
@@ -76,12 +51,44 @@ def get_authorization(credentials: HTTPBasicCredentials = Depends(security)):
     return credentials.username
 
 
+@app.post("/api/annotation/default")
+def annotate(
+    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
+    lang: str = Body(embed=True, default="EN"),
+    user: Optional[str] = Depends(get_authorization),
+):
+    """entry point for annotate functionality"""
+    if AUTH_ENABLED:
+        print(f"Verified user: {user}")
+    # Use the custom validation imported above, currently only lang requires custom validation
+    validate_annotate(lang)
+    result = df.run_text_pipeline_sync([text])
+    output = format_pii_for_output(result)
+    return output
+
+
+@app.post("/api/anonymize/non-reversible")
+def anonymize(
+    text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
+    lang: str = Body(embed=True, default="EN"),
+    user: Optional[str] = Depends(get_authorization),
+):
+    """entry point for anonymize functionality"""
+    if AUTH_ENABLED:
+        print(f"Verified user: {user}")
+    # Use the custom validation imported above, currently only lang requires custom validation
+    validate_anonymize(lang)
+    result = df.run_text_pipeline_sync([text])
+    output = anonymize_pii_for_output(result)
+    return output
+
+
 @app.post("/api/anonymize/reversible")
 def encode(
     text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
     lang: str = Body(embed=True, default= "EN"),
     salt: str = Body(embed=True, min_length=16, max_length=64),
-    user: str = Depends(get_authorization),
+    user: Optional[str] = Depends(get_authorization),
 ):
     """entry point for reversible anonymize functionality"""
     if AUTH_ENABLED:
@@ -110,7 +117,7 @@ def load_credentials_file() -> tuple[bytes, bytes]:
         authorized_user_bytes = config_dict[USER_KEY].encode("utf8")
         password_bytes = config_dict[PASSWORD_KEY].encode("utf8")
     except KeyError as exc:
-        #failed to find in file, throwing
+        # failed to find in file, throwing
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authorization configuration is not complete, please add authorized Users",
