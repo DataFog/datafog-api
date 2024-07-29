@@ -12,6 +12,7 @@ AUTH_ENABLED_KEY = "DATAFOG_AUTH_ENABLED"
 USER_KEY = "DATAFOG_AUTH_USER"
 PASSWORD_KEY = "DATAFOG_PASSWORD"
 
+
 class ResponseKeys(Enum):
     """Define API response headers as an enum"""
 

@@ -5,13 +5,12 @@ import os
 import secrets
 from typing import Optional
 
+from constants import AUTH_ENABLED_KEY, PASSWORD_KEY, USER_KEY, VALID_INPUT_PATTERN
 from datafog import DataFog
+from exception_handler import exception_processor
 from fastapi import Body, Depends, FastAPI, HTTPException, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-
-from constants import AUTH_ENABLED_KEY, PASSWORD_KEY, USER_KEY, VALID_INPUT_PATTERN
-from exception_handler import exception_processor
 from input_validation import validate_annotate, validate_anonymize
 from processor import (
     anonymize_pii_for_output,
@@ -86,7 +85,7 @@ def anonymize(
 @app.post("/api/anonymize/reversible")
 def encode(
     text: str = Body(embed=True, min_length=1, max_length=1000, pattern=VALID_INPUT_PATTERN),
-    lang: str = Body(embed=True, default= "EN"),
+    lang: str = Body(embed=True, default="EN"),
     salt: str = Body(embed=True, min_length=16, max_length=64),
     user: Optional[str] = Depends(get_authorization),
 ):
