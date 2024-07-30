@@ -119,8 +119,3 @@ def test_load_credentials_file_malformed_no_password_field():
          pytest.raises(HTTPException) as excinfo:
         load_credentials_file()
     assert ExceptionMessages.AUTH_PASS_KEY.value == excinfo.value.detail
-
-
-# Run the test
-if __name__ == "__main__":
-    pytest.main()
