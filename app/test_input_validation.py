@@ -18,4 +18,4 @@ def test_validate_language_unsupported():
     lang = "FR"
     with pytest.raises(LanguageValidationError) as excinfo:
         validate_language(lang)
-    assert ExceptionMessages.UNSUPPORTED_LANGUAGE.value == str(excinfo.value)
+    assert ExceptionMessages.UNSUPPORTED_LANG.value == str(excinfo.value)

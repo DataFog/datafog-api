@@ -18,6 +18,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 AUTH_ENABLED = os.getenv(AUTH_ENABLED_KEY, "false").lower() == "true"
 security = HTTPBasic() if AUTH_ENABLED else lambda: None
 
+
 def get_authorization(credentials: Optional[HTTPBasicCredentials] = Depends(security)):
     """Helper function to validate user authorization"""
     if credentials is None:
@@ -29,7 +30,7 @@ def get_authorization(credentials: Optional[HTTPBasicCredentials] = Depends(secu
             detail=ExceptionMessages.UNAUTHORIZED.value,
             headers={"WWW-Authenticate": "Basic"},
         )
-    
+
     return AuthTypes.HTTP_BASIC.value
 
 

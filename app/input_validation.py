@@ -19,4 +19,4 @@ def validate_anonymize(lang: str):
 def validate_language(lang: str):
     """Check that the input is in the list of languages supported by DataFog"""
     if lang not in SUPPORTED_LANGUAGES:
-        raise LanguageValidationError(ExceptionMessages.UNSUPPORTED_LANGUAGE.value)
+        raise LanguageValidationError(ExceptionMessages.UNSUPPORTED_LANG.value)

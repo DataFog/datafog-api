@@ -12,7 +12,7 @@ def exception_processor(request: Request, exc: RequestValidationError):
         # switch on e["type"] if more standard fastapi 422 errors need to be altered
         # custom exceptions should manage output formatting during creation not here
         if e["type"] == "value_error.str.regex":
-            e["msg"] = ExceptionMessages.INVALID_CHARACTER.value
+            e["msg"] = ExceptionMessages.INVALID_CHAR.value
             e["ctx"]["pattern"] = "Extended ASCII"
 
     return JSONResponse(

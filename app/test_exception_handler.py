@@ -8,7 +8,7 @@ from exception_handler import exception_processor
 from fastapi import status
 from fastapi.exceptions import RequestValidationError
 
-REGEX_MSG = ExceptionMessages.INVALID_CHARACTER.value
+REGEX_MSG = ExceptionMessages.INVALID_CHAR.value
 REGEX_PATTERN = "Extended ASCII"
 
 

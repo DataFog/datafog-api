@@ -13,6 +13,7 @@ from fastapi.security import HTTPBasicCredentials
 TEST_USER = "jsmith"
 TEST_PASSWORD = "1234"
 
+
 @patch("authorization.load_valid_credentials")
 def test_is_valid_request_true(mock_load_valid_credentials):
     # Define the mock and test data

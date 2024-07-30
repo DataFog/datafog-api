@@ -36,6 +36,6 @@ class ExceptionMessages(Enum):
 
     AUTH_USER_KEY = "Authorization configuration is not complete, please add authorized Users"
     AUTH_PASS_KEY = "Authorization configuration is not complete, please add authorized Users"
-    INVALID_CHARACTER = "string contains unsupported characters beyond the Extended ASCII set"
+    INVALID_CHAR = "string contains unsupported characters beyond the Extended ASCII set"
     UNAUTHORIZED = "Incorrect username or password"
-    UNSUPPORTED_LANGUAGE = "Unsupported language request, please try a language listed in the DataFog docs"
+    UNSUPPORTED_LANG = "Unsupported language, please try a language listed in the DataFog docs"
