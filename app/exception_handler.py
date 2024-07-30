@@ -1,9 +1,12 @@
 """Exception handling routines"""
 
-from constants import ExceptionMessages
+# Third party imports
 from fastapi import Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+# Local imports
+from constants import ExceptionMessages
 
 
 def exception_processor(request: Request, exc: RequestValidationError):

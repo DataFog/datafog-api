@@ -1,12 +1,16 @@
 """Unit tests for exception_handler.py"""
 
+# Standard library imports
 import json
 
+# Third party imports
+from fastapi import status
+from fastapi.exceptions import RequestValidationError
+
+# Local imports
 from constants import ExceptionMessages
 from custom_exceptions import LanguageValidationError
 from exception_handler import exception_processor
-from fastapi import status
-from fastapi.exceptions import RequestValidationError
 
 REGEX_MSG = ExceptionMessages.INVALID_CHAR.value
 REGEX_PATTERN = "Extended ASCII"

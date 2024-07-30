@@ -2,3 +2,4 @@ fastapi
 uvicorn[standard]
 numpy
 datafog==3.3.0
+python-dotenv
