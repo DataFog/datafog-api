@@ -2,12 +2,13 @@
 
 import json
 
+from constants import ExceptionMessages
 from custom_exceptions import LanguageValidationError
 from exception_handler import exception_processor
 from fastapi import status
 from fastapi.exceptions import RequestValidationError
 
-REGEX_MSG = "string contains unsupported characters beyond the Extended ASCII set"
+REGEX_MSG = ExceptionMessages.INVALID_CHARACTER.value
 REGEX_PATTERN = "Extended ASCII"
 
 
