@@ -1,13 +1,18 @@
 """Unit tests for exception_handler.py"""
 
+# Standard library imports
 import json
 
-from custom_exceptions import LanguageValidationError
-from exception_handler import exception_processor
+# Third party imports
 from fastapi import status
 from fastapi.exceptions import RequestValidationError
 
-REGEX_MSG = "string contains unsupported characters beyond the Extended ASCII set"
+# Local imports
+from constants import ExceptionMessages
+from custom_exceptions import LanguageValidationError
+from exception_handler import exception_processor
+
+REGEX_MSG = ExceptionMessages.INVALID_CHAR.value
 REGEX_PATTERN = "Extended ASCII"
 
 

@@ -1,6 +1,9 @@
 """Unit tests for input_validation.py"""
 
 import pytest
+
+# Local imports
+from constants import ExceptionMessages
 from custom_exceptions import LanguageValidationError
 from input_validation import validate_language
 
@@ -17,7 +20,4 @@ def test_validate_language_unsupported():
     lang = "FR"
     with pytest.raises(LanguageValidationError) as excinfo:
         validate_language(lang)
-    assert (
-        "Unsupported language request, please try a language listed in the DataFog docs"
-        == str(excinfo.value)
-    )
+    assert ExceptionMessages.UNSUPPORTED_LANG.value == str(excinfo.value)

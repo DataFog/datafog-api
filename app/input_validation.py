@@ -1,6 +1,7 @@
 """Custom input validation routines"""
 
-from constants import SUPPORTED_LANGUAGES
+# Local imports
+from constants import SUPPORTED_LANGUAGES, ExceptionMessages
 from custom_exceptions import LanguageValidationError
 
 
@@ -19,6 +20,4 @@ def validate_anonymize(lang: str):
 def validate_language(lang: str):
     """Check that the input is in the list of languages supported by DataFog"""
     if lang not in SUPPORTED_LANGUAGES:
-        raise LanguageValidationError(
-            "Unsupported language request, please try a language listed in the DataFog docs"
-        )
+        raise LanguageValidationError(ExceptionMessages.UNSUPPORTED_LANG.value)
