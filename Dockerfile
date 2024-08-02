@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:23.10
 ENV PYTHONUNBUFFERED=1
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -7,14 +7,18 @@ EXPOSE 8000
 RUN apt-get update && apt-get install -y \
     vim \
     git \
-    python3-pip \
     python3.11 \
+    python3-venv \
     wget
 
-ADD app /root/app
+RUN useradd -ms /bin/bash datafoguser
 
-RUN python3.11 -m pip install -r /root/app/requirements.txt
+ADD app /home/datafoguser/app
 
+RUN python3.11 -m venv .venv && . .venv/bin/activate && \
+    .venv/bin/pip install --upgrade pip && \
+    .venv/bin/pip install -r /home/datafoguser/app/requirements.txt
 
-WORKDIR /root/app
-ENTRYPOINT ["python3.11", "-m", "uvicorn", "--host=0.0.0.0","main:app"]
+WORKDIR /home/datafoguser/app
+USER datafoguser
+ENTRYPOINT ["sh", "docker-entrypoint.sh"]
