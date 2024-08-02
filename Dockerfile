@@ -20,4 +20,5 @@ RUN python3.11 -m venv .venv && . .venv/bin/activate && \
     .venv/bin/pip install -r /home/datafoguser/app/requirements.txt
 
 WORKDIR /home/datafoguser/app
+USER datafoguser
 ENTRYPOINT ["sh", "docker-entrypoint.sh"]
