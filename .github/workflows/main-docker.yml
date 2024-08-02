@@ -1,6 +1,9 @@
 # This workflow will build and push a docker image to dockerhub
 name: Main Docker
 
+env:
+  IMAGE_NAME: datafog/datafog-api:latest,datafog/datafog-api:1-latest
+
 on:
   workflow_run:
     workflows: ["Main and Dev CICD datafog-api app"]
@@ -8,6 +11,8 @@ on:
       - main
     types:
       - completed
+  pull_request:
+    branches: ["dev"]
 
 jobs:
   build-and-push-docker:
@@ -30,13 +35,20 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE_NAME }}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
           push: true
-          tags: datafog/datafog-api:latest,datafog/datafog-api:1-latest
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
           platforms: linux/amd64,linux/arm64/v8
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
