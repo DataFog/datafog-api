@@ -8,22 +8,26 @@ VALID_INPUT_PATTERN = r"^[\x00-\xFF]+$"
 # List of languages codes supported by DataFog
 SUPPORTED_LANGUAGES = ["EN"]
 
+# Authorization Constants
 AUTH_TYPE_KEY = "DATAFOG_AUTH_TYPE"
-BASE_TELEMETRY_URL = "https://www.datafog.ai/usage"
 USER_KEY = "DATAFOG_AUTH_USER"
 PASSWORD_KEY = "DATAFOG_PASSWORD"
-UUID_KEY = "DATAFOG_UUID"
+
+# Telemetry Constants
 API_VERSION_KEY = "DATAFOG_API_VERSION"
-DEPLOYMENT_TYPE_KEY = "DATAFOG_DEPLOYMENT_TYPE"
-TELEMETRY_APP_KEY = "app"
 APP_NAME = "datafog-api"
+BASE_TELEMETRY_URL = "https://www.datafog.ai/usage"
+DEPLOYMENT_TYPE_KEY = "DATAFOG_DEPLOYMENT_TYPE"
 SYSTEM_FILE_NAME = "api.system.yaml"
+TELEMETRY_APP_KEY = "app"
+UUID_KEY = "DATAFOG_UUID"
 FILE_PATH_LIST = [
     "~/.datafog/",
     "./datafog/",
     "/var/tmp/datafog",
     "/tmp/"
 ]
+
 
 class ResponseKeys(Enum):
     """Define API response headers as an enum"""

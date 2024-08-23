@@ -1,11 +1,21 @@
 """Collect anonymous statistics"""
 import os
-import requests
 import uuid
+from urllib.parse import urlencode
+
+import requests
 import yaml
 
-from urllib.parse import urlencode
-from constants import API_VERSION_KEY, APP_NAME, BASE_TELEMETRY_URL, DEPLOYMENT_TYPE_KEY, UUID_KEY, SYSTEM_FILE_NAME, TELEMETRY_APP_KEY, FILE_PATH_LIST
+from constants import (
+    API_VERSION_KEY,
+    APP_NAME,
+    BASE_TELEMETRY_URL,
+    DEPLOYMENT_TYPE_KEY,
+    FILE_PATH_LIST,
+    SYSTEM_FILE_NAME,
+    TELEMETRY_APP_KEY,
+    UUID_KEY,
+)
 
 
 class _Telemetry:
@@ -20,7 +30,7 @@ class _Telemetry:
         self.uuid = instance_uuid
 
     def report_basic_telemetry(self):
-        #send the UUID to telemetry tracking
+        # send the UUID to telemetry tracking
         data_points = self.collect_telemetry()
         telemetry_url = create_telemetry_url(data_points)
         # send telemetry to url
@@ -119,5 +129,6 @@ def load_system_yaml(filepath: str) -> dict:
 def create_telemetry_url(parameters: dict) -> str:
     query_params_string = urlencode(parameters)
     return f"{BASE_TELEMETRY_URL}?{query_params_string}"
+
 
 telemetry_instance = _Telemetry()
