@@ -18,9 +18,11 @@ from processor import (
     encode_pii_for_output,
     format_pii_for_output,
 )
+from telemetry import telemetry_instance
 
 app = FastAPI()
 df = DataFog()
+telemetry_instance.report_basic_telemetry()
 
 
 @app.post("/api/annotation/default")
