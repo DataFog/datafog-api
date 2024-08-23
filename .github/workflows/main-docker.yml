@@ -40,6 +40,8 @@ jobs:
           platforms: linux/amd64,linux/arm64/v8
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache
+          build-args: |
+            DATAFOG_DEPLOYMENT_TYPE=Docker,DATAFOG_API_VERSION=${{ env.IMAGE_NAME }}:${{ github.sha }}
       - name: Update Docker Hub README
         env:
           DOCKER_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
