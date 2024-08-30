@@ -18,6 +18,9 @@ from constants import (
 )
 
 
+TELEMETRY_INSTANCE = None
+
+
 class _Telemetry:
     """Controller to manage telemetry interactions"""
 
@@ -29,20 +32,25 @@ class _Telemetry:
             persist_uuid(str(instance_uuid))
         self.uuid = instance_uuid
 
+
     def report_basic_telemetry(self):
         # send the UUID to telemetry tracking
         data_points = self.collect_telemetry()
         telemetry_url = create_telemetry_url(data_points)
         # send telemetry to url
-        response = requests.get(telemetry_url)
+        try:
+            response = requests.get(telemetry_url, timeout=3)
 
-        if response.status_code == 200:
-            print("Sent telemetry successfully")
-        else:
-            # Handle the case where the request was not successful
-            print(f"Request failed with status code {response.status_code}")
+            if response.status_code == 200:
+                print("Sent telemetry successfully")
+            else:
+                # Handle the case where the request was not successful
+                print(f"Request failed with status code {response.status_code}")
+        except requests.exceptions.Timeout:
+            print("Telemetry request timed out")
 
-    def collect_telemetry(self):
+
+    def collect_telemetry(self) -> dict:
         data = {}
         data[TELEMETRY_APP_KEY] = APP_NAME
         data[UUID_KEY] = self.uuid
@@ -58,38 +66,27 @@ class _Telemetry:
 
 def load_uuid() -> uuid.UUID:
     """read uuid from datafog config files"""
-    for path in FILE_PATH_LIST:
-        filename = path + SYSTEM_FILE_NAME
-        if os.path.exists(filename):
-            try:
-                with open(filename, "r") as config:
-                    config_dict = yaml.safe_load(config)
-                    uid = uuid.UUID(config_dict[UUID_KEY])
-                    return uid
-            except yaml.YAMLError:
-                print(f"Warning: The file '{filename}' is not a valid YAML file.")
-            except KeyError:
-                print(f"No UUID key in file '{filename}'")
-            except Exception as ex:
-                print(f"Failed to parse UUID from {filename}, exception: {ex}")
+    for config_dict, filename in config_generator(False):
+        try:
+            uid = uuid.UUID(config_dict[UUID_KEY])
+            return uid
+        except KeyError:
+            print(f"No UUID key in file '{filename}'")
+        except ValueError as ve:
+            print(f"Malformed UUID in file '{filename}', {ve}")
+
     return None
 
 
 def persist_uuid(value):
-    for path in FILE_PATH_LIST:
-        filename = path + SYSTEM_FILE_NAME
-        new_data = {UUID_KEY : value}
-        config_dict = load_uuid_yaml(filename)
-
-        if config_dict is None:
-            continue
-
+    new_data = {UUID_KEY : value}
+    for config_dict, filename in config_generator(True):
         # Update the data with the new key-value pair
         config_dict.update(new_data)
 
         # Write the updated data back to the file
         try:
-            with open(filename, 'w') as file:
+            with open(filename, 'w', encoding="utf-8") as file:
                 yaml.safe_dump(config_dict, file, default_flow_style=False)
             # Successfully wrote UUID to file, log and return
             print(f"Updated YAML data written to {filename}")
@@ -98,37 +95,56 @@ def persist_uuid(value):
             print(f"Error writing to file '{filename}': {e}")
 
 
-def load_uuid_yaml(filepath: str) -> dict:
-    return load_system_yaml(filepath)
-
-
-def load_system_yaml(filepath: str) -> dict:
-    if not os.path.exists(filepath):
-        try:
-            # Creating file that does not exist
-            with open(filepath, 'x'):
-                return {}
-        except PermissionError:
-            print(f"Permission denied to create file: {filepath}")
-        except OSError as e:
-            print(f"Failed to create file {filepath}: {e}")
-    else:
+def load_system_yaml(filepath: str, create_new: bool) -> dict:
+    if os.path.exists(filepath):
         try:
             # Open existing file to update
-            with open(filepath, "r") as config:
+            with open(filepath, "r", encoding="utf-8") as config:
                 config_dict = yaml.safe_load(config)
                 return config_dict
         except yaml.YAMLError:
             print(f"Warning: The file '{filepath}' is not a valid YAML file.")
         except Exception as ex:
             print(f"Failed to open config file '{filepath}', exception: {ex}")
+    elif create_new:
+        try:
+            # Creating file that does not exist
+            # Extract the directory path from the file path
+            directory = os.path.dirname(filepath)
+
+            # Create the directory if it doesn't exist
+            if not os.path.exists(directory):
+                os.makedirs(directory)
+            with open(filepath, 'x', encoding="utf-8"):
+                return {}
+        except PermissionError:
+            print(f"Permission denied to create file: {filepath}")
+        except OSError as e:
+            print(f"Failed to create file {filepath}: {e}")
 
     return None
 
 
 def create_telemetry_url(parameters: dict) -> str:
+    if not parameters:
+        return BASE_TELEMETRY_URL
     query_params_string = urlencode(parameters)
     return f"{BASE_TELEMETRY_URL}?{query_params_string}"
 
 
-telemetry_instance = _Telemetry()
+def config_generator(create_new: bool):
+    for path in FILE_PATH_LIST:
+        expanded_path = os.path.expanduser(path)
+        filepath = f"{expanded_path}{SYSTEM_FILE_NAME}"
+
+        config_dict = load_system_yaml(filepath, create_new)
+
+        if config_dict is not None:
+            yield (config_dict, filepath)
+
+
+def get_telemetry_instance() -> _Telemetry:
+    global TELEMETRY_INSTANCE
+    if TELEMETRY_INSTANCE is None:
+        TELEMETRY_INSTANCE = _Telemetry()
+    return TELEMETRY_INSTANCE

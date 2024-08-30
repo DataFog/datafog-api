@@ -24,7 +24,7 @@ UUID_KEY = "DATAFOG_UUID"
 FILE_PATH_LIST = [
     "~/.datafog/",
     "./datafog/",
-    "/var/tmp/datafog",
+    "/var/tmp/datafog/",
     "/tmp/"
 ]
 
