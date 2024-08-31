@@ -3,7 +3,7 @@
 import pytest
 
 # Local imports
-from constants import ExceptionMessages, SUPPORTED_LANGUAGES
+from constants import SUPPORTED_LANGUAGES, ExceptionMessages
 from custom_exceptions import LanguageValidationError
 from input_validation import validate_language
 
