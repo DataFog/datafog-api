@@ -26,6 +26,8 @@ If `DATAFOG_API_TOKEN` is configured, every request must include either:
 - `Authorization: Bearer <token>`
 - `X-API-Key: <token>`
 
+If `DATAFOG_RATE_LIMIT_RPS` is greater than `0`, requests are subject to a service-wide token-bucket request cap with response `429` and `rate_limited` on excess bursts.
+
 ### Standard error response
 
 ```json
@@ -45,6 +47,7 @@ If `DATAFOG_API_TOKEN` is configured, every request must include either:
 - `method_not_allowed` (405)
 - `not_found` (404)
 - `unauthorized` (401)
+- `rate_limited` (429)
 - `idempotency_conflict` (409)
 - `unsupported_media_type` (415)
 - `request_too_large` (413)

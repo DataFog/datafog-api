@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"mime"
 	"net/http"
 	"strconv"
@@ -25,22 +26,23 @@ import (
 )
 
 type Server struct {
-	policy     models.Policy
-	store      *receipts.ReceiptStore
-	apiToken   string
-	startedAt  time.Time
-	logger     *log.Logger
-	mu         sync.Mutex
-	statsMu    sync.Mutex
-	decisions  map[string]idempotentDecision
-	scans      map[string]idempotentCachedResponse
-	transforms map[string]idempotentCachedResponse
-	anonymizes map[string]idempotentCachedResponse
-	totalCount int64
-	errorCount int64
-	statusHits map[int]int64
-	pathHits   map[string]int64
-	methodHits map[string]int64
+	policy      models.Policy
+	store       *receipts.ReceiptStore
+	apiToken    string
+	rateLimiter *tokenBucket
+	startedAt   time.Time
+	logger      *log.Logger
+	mu          sync.Mutex
+	statsMu     sync.Mutex
+	decisions   map[string]idempotentDecision
+	scans       map[string]idempotentCachedResponse
+	transforms  map[string]idempotentCachedResponse
+	anonymizes  map[string]idempotentCachedResponse
+	totalCount  int64
+	errorCount  int64
+	statusHits  map[int]int64
+	pathHits    map[string]int64
+	methodHits  map[string]int64
 }
 
 type requestIDContextKey struct{}
@@ -87,23 +89,24 @@ type metricsResponse struct {
 	UptimeSeconds float64          `json:"uptime_seconds"`
 }
 
-func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Logger, apiToken string) *Server {
+func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Logger, apiToken string, rateLimitRPS int) *Server {
 	if logger == nil {
 		logger = log.Default()
 	}
 	return &Server{
-		policy:     policyData,
-		store:      store,
-		apiToken:   apiToken,
-		startedAt:  time.Now().UTC(),
-		logger:     logger,
-		decisions:  map[string]idempotentDecision{},
-		scans:      map[string]idempotentCachedResponse{},
-		transforms: map[string]idempotentCachedResponse{},
-		anonymizes: map[string]idempotentCachedResponse{},
-		statusHits: map[int]int64{},
-		pathHits:   map[string]int64{},
-		methodHits: map[string]int64{},
+		policy:      policyData,
+		store:       store,
+		apiToken:    apiToken,
+		rateLimiter: newTokenBucket(rateLimitRPS),
+		startedAt:   time.Now().UTC(),
+		logger:      logger,
+		decisions:   map[string]idempotentDecision{},
+		scans:       map[string]idempotentCachedResponse{},
+		transforms:  map[string]idempotentCachedResponse{},
+		anonymizes:  map[string]idempotentCachedResponse{},
+		statusHits:  map[int]int64{},
+		pathHits:    map[string]int64{},
+		methodHits:  map[string]int64{},
 	}
 }
 
@@ -149,6 +152,10 @@ func (s *Server) Handler() http.Handler {
 			s.respondError(responseWriter, http.StatusUnauthorized, models.APIError{Code: "unauthorized", Message: "missing or invalid API token", RequestID: reqID})
 			return
 		}
+		if !s.rateLimiter.allow() {
+			s.respondError(responseWriter, http.StatusTooManyRequests, models.APIError{Code: "rate_limited", Message: "request rate limit exceeded", RequestID: reqID})
+			return
+		}
 
 		if pattern == "" {
 			s.respondError(responseWriter, http.StatusNotFound, models.APIError{Code: "not_found", Message: "endpoint not found", RequestID: reqID})
@@ -172,6 +179,49 @@ func (s *Server) authorized(r *http.Request) bool {
 	}
 
 	return false
+}
+
+type tokenBucket struct {
+	mu       sync.Mutex
+	tokens   float64
+	rate     float64
+	capacity float64
+	lastTime time.Time
+}
+
+func newTokenBucket(rateLimit int) *tokenBucket {
+	if rateLimit <= 0 {
+		return nil
+	}
+
+	rate := float64(rateLimit)
+	return &tokenBucket{
+		tokens:   rate,
+		rate:     rate,
+		capacity: rate,
+		lastTime: time.Now(),
+	}
+}
+
+func (tb *tokenBucket) allow() bool {
+	if tb == nil {
+		return true
+	}
+
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+
+	now := time.Now()
+	delta := now.Sub(tb.lastTime).Seconds()
+	if delta > 0 {
+		tb.tokens = math.Min(tb.capacity, tb.tokens+(delta*tb.rate))
+		tb.lastTime = now
+	}
+	if tb.tokens < 1 {
+		return false
+	}
+	tb.tokens--
+	return true
 }
 
 func authorizationToken(value string) string {

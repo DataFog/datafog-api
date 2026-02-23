@@ -27,16 +27,20 @@ func testPolicy() models.Policy {
 }
 
 func makeServer(t *testing.T) *http.Server {
-	return makeServerWithToken(t, "")
+	return makeServerWithTokenAndRateLimit(t, "", 0)
 }
 
 func makeServerWithToken(t *testing.T, apiToken string) *http.Server {
+	return makeServerWithTokenAndRateLimit(t, apiToken, 0)
+}
+
+func makeServerWithTokenAndRateLimit(t *testing.T, apiToken string, rateLimitRPS int) *http.Server {
 	t.Helper()
 	store, err := receipts.NewReceiptStore(t.TempDir() + "/receipts.jsonl")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
-	h := New(testPolicy(), store, nil, apiToken)
+	h := New(testPolicy(), store, nil, apiToken, rateLimitRPS)
 	return &http.Server{Handler: h.Handler()}
 }
 
@@ -106,6 +110,29 @@ func TestTokenAuth(t *testing.T) {
 		server.Handler.ServeHTTP(resp, req)
 		assertJSONError(t, resp, http.StatusUnauthorized, "unauthorized")
 	})
+}
+
+func TestRateLimit(t *testing.T) {
+	server := makeServerWithTokenAndRateLimit(t, "", 2)
+
+	req1 := httptest.NewRequest(http.MethodGet, "/health", nil)
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected first request 200, got %d", resp1.Code)
+	}
+
+	req2 := httptest.NewRequest(http.MethodGet, "/health", nil)
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	if resp2.Code != http.StatusOK {
+		t.Fatalf("expected second request 200, got %d", resp2.Code)
+	}
+
+	req3 := httptest.NewRequest(http.MethodGet, "/health", nil)
+	resp3 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp3, req3)
+	assertJSONError(t, resp3, http.StatusTooManyRequests, "rate_limited")
 }
 
 func TestPolicyVersionEndpoint(t *testing.T) {

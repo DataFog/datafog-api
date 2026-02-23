@@ -117,6 +117,7 @@ Datafog API v2 will be a single Go service that owns policy decisioning and priv
 - Add operational controls for bounded resource use.
   - Limit body sizes at transport boundaries.
   - Cap idempotency cache/map growth and lifecycle.
+  - **Done (v2):** Added optional service-wide request rate limiting via `DATAFOG_RATE_LIMIT_RPS` (0=disabled), returning `429 rate_limited`.
 
 ### Additional production readiness work before release
 

@@ -54,3 +54,45 @@ func TestGetenvDuration(t *testing.T) {
 		}
 	})
 }
+
+func TestGetenvInt(t *testing.T) {
+	t.Run("fallback_when_missing", func(t *testing.T) {
+		t.Setenv("DATAFOG_RATE_LIMIT_RPS", "")
+		got := getenvInt("DATAFOG_RATE_LIMIT_RPS", 0)
+		if got != 0 {
+			t.Fatalf("expected fallback int, got %d", got)
+		}
+	})
+
+	t.Run("parse_valid_int", func(t *testing.T) {
+		t.Setenv("DATAFOG_RATE_LIMIT_RPS", "15")
+		got := getenvInt("DATAFOG_RATE_LIMIT_RPS", 0)
+		if got != 15 {
+			t.Fatalf("expected 15, got %d", got)
+		}
+	})
+
+	t.Run("fallback_on_invalid_int", func(t *testing.T) {
+		t.Setenv("DATAFOG_RATE_LIMIT_RPS", "bad")
+		got := getenvInt("DATAFOG_RATE_LIMIT_RPS", 3)
+		if got != 3 {
+			t.Fatalf("expected fallback int, got %d", got)
+		}
+	})
+
+	t.Run("fallback_on_negative_int", func(t *testing.T) {
+		t.Setenv("DATAFOG_RATE_LIMIT_RPS", "-1")
+		got := getenvInt("DATAFOG_RATE_LIMIT_RPS", 3)
+		if got != 3 {
+			t.Fatalf("expected fallback int, got %d", got)
+		}
+	})
+
+	t.Run("parse_zero", func(t *testing.T) {
+		t.Setenv("DATAFOG_RATE_LIMIT_RPS", "0")
+		got := getenvInt("DATAFOG_RATE_LIMIT_RPS", 3)
+		if got != 0 {
+			t.Fatalf("expected 0, got %d", got)
+		}
+	})
+}

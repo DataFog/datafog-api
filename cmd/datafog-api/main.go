@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -20,6 +22,7 @@ func main() {
 	receiptPath := getenv("DATAFOG_RECEIPT_PATH", "datafog_receipts.jsonl")
 	apiToken := getenv("DATAFOG_API_TOKEN", "")
 	addr := getenv("DATAFOG_ADDR", ":8080")
+	rateLimitRPS := getenvInt("DATAFOG_RATE_LIMIT_RPS", 0)
 	shutdownTimeout := getenvDuration("DATAFOG_SHUTDOWN_TIMEOUT", 10*time.Second)
 
 	policyData, err := policy.LoadPolicyFromFile(policyPath)
@@ -32,7 +35,7 @@ func main() {
 		log.Fatalf("init receipts: %v", err)
 	}
 
-	h := server.New(policyData, store, log.Default(), apiToken)
+	h := server.New(policyData, store, log.Default(), apiToken, rateLimitRPS)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           h.Handler(),
@@ -91,6 +94,20 @@ func getenvDuration(key string, fallback time.Duration) time.Duration {
 	parsed, err := time.ParseDuration(value)
 	if err != nil || parsed <= 0 {
 		log.Printf("invalid duration for %s=%q, using fallback %s", key, value, fallback)
+		return fallback
+	}
+	return parsed
+}
+
+func getenvInt(key string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed < 0 {
+		log.Printf("invalid integer for %s=%q, using fallback %d", key, value, fallback)
 		return fallback
 	}
 	return parsed
