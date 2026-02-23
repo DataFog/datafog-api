@@ -20,7 +20,7 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: "1.22"
+        go-version: "1.24.13"
     - name: Run gofmt check
       run: |
         test -z "$(gofmt -l cmd internal | tee /tmp/gofmt-diff.txt)" || {
@@ -37,17 +37,6 @@ jobs:
         go install github.com/securego/gosec/v2/cmd/gosec@latest
         go install golang.org/x/vuln/cmd/govulncheck@latest
         gosec -severity medium -confidence medium ./...
-
-        tmpfile="$(mktemp)"
-        if ! govulncheck ./... >"$tmpfile" 2>&1; then
-          if grep -E "Found in: .*@v" "$tmpfile" >/dev/null; then
-            cat "$tmpfile"
-            rm -f "$tmpfile"
-            exit 1
-          fi
-          echo "Govulncheck reported only standard-library advisories; review separately."
-          cat "$tmpfile"
-        fi
-        rm -f "$tmpfile"
+        govulncheck ./...
     - name: Build container image
       run: docker build . --file Dockerfile --tag datafog-api:$(date +%s)

@@ -57,10 +57,10 @@ Assume public internet exposure for all request endpoints unless deployment poli
 
 ## Controls and hardening checks
 
-- Dependency and static security checks are planned for the next hardening phase:
+- Dependency and static security checks are part of the production hardening phase:
   - `gosec` for common Go security smells.
   - `govulncheck` for module vulnerability visibility.
-- During MVP, include explicit operational controls (rate limiting, token auth, least-privileged container runtime, and secret hygiene) and treat the above as Phase 2 hardening.
+- In CI, these checks are hard-failing (`exit non-zero`) on reported findings.
 
 ## Incident response baseline
 
