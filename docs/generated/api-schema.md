@@ -19,3 +19,4 @@ Discovered from `internal/server/server.go` route registration.
 - Method validation returns `method_not_allowed` on unsupported methods.
 - Unknown routes return `not_found`.
 - All successful and error responses are JSON with `Content-Type: application/json`.
+- Every response includes `X-Request-ID`; callers may provide `x-request-id` for propagation.

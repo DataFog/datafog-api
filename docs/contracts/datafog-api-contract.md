@@ -14,6 +14,10 @@
 
 All responses use JSON and include `Content-Type: application/json`.
 
+`X-Request-ID` is always returned on every response.
+- If `x-request-id` is provided by the caller, the same value is reflected in the response header and error `request_id` payload.
+- If missing, the service generates a request id and returns it in `X-Request-ID` and error payloads where present.
+
 POST requests require `Content-Type: application/json` (charset may be supplied with standard media type syntax).
 A request body larger than 1 MiB (`1048576` bytes) is rejected with `request_too_large`.
 
@@ -41,6 +45,7 @@ A request body larger than 1 MiB (`1048576` bytes) is rejected with `request_too
 - `encode_error` (500)
 - `hash_error` (500)
 - `receipt_error` (500)
+- `internal_error` (500)
 
 ## Endpoints
 
@@ -185,6 +190,10 @@ Transforms text based on per-entity transforms.
   "trace_id": "optional correlation id",
   "idempotency_key": "optional key for replay-safe dedupe"
 }
+
+`transform` accepts only the documented modes (`mask`, `tokenize`, `anonymize`, `redact`) in both `mode` and `entity_modes` values.
+Invalid transform mode values result in `400` with `code: invalid_request`.
+`entity_modes` must not contain empty keys.
 ```
 
 #### Response 200
