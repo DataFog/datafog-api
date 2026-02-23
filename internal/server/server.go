@@ -484,7 +484,6 @@ func hashDecideInput(req models.DecideRequest) (string, error) {
 	req.SessionID = ""
 	req.ActorID = ""
 	req.TenantID = ""
-	req.Action = models.ActionMeta{}
 	return hashPayload(req)
 }
 

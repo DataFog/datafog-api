@@ -278,6 +278,89 @@ func TestDecideTransformAndReceiptFlow(t *testing.T) {
 	}
 }
 
+func TestHashDecideInputIgnoresRequestMetadata(t *testing.T) {
+	request1 := models.DecideRequest{
+		RequestID: "r1",
+		TraceID:   "trace-1",
+		TenantID:  "tenant-1",
+		ActorID:   "actor-1",
+		SessionID: "session-1",
+		Action: models.ActionMeta{
+			Type:     "file.write",
+			Resource: "notes.txt",
+			Args:     []string{"--append"},
+		},
+		Text: "contact jane@example.com",
+		Findings: []models.ScanFinding{
+			{EntityType: "email", Value: "jane@example.com", Start: 8, End: 23, Confidence: 0.99},
+		},
+		IdempotencyKey: "id1",
+	}
+	request2 := models.DecideRequest{
+		RequestID: "r2",
+		TraceID:   "trace-2",
+		TenantID:  "tenant-2",
+		ActorID:   "actor-2",
+		SessionID: "session-2",
+		Action:    request1.Action,
+		Text:      request1.Text,
+		Findings:  request1.Findings,
+	}
+	if request1.Action.Type == "" || request2.Action.Type == "" {
+		t.Fatalf("setup failure")
+	}
+
+	got1, err := hashDecideInput(request1)
+	if err != nil {
+		t.Fatalf("hashDecideInput failed: %v", err)
+	}
+	got2, err := hashDecideInput(request2)
+	if err != nil {
+		t.Fatalf("hashDecideInput failed: %v", err)
+	}
+	if got1 != got2 {
+		t.Fatalf("expected request metadata to be excluded, got %q and %q", got1, got2)
+	}
+
+	request2.IdempotencyKey = "different-key"
+	request2.Action = models.ActionMeta{
+		Type:     "file.read",
+		Resource: "notes.txt",
+		Args:     []string{"--append"},
+	}
+	got3, err := hashDecideInput(request2)
+	if err != nil {
+		t.Fatalf("hashDecideInput failed: %v", err)
+	}
+	if got3 == got1 {
+		t.Fatalf("expected different input payloads to produce different input hash")
+	}
+}
+
+func TestHashDecideActionStableForEquivalentAction(t *testing.T) {
+	action := models.ActionMeta{
+		Type:      "file.write",
+		Tool:      "shell",
+		Resource:  "notes.txt",
+		Args:      []string{"--append", "--force"},
+		Sensitive: true,
+	}
+	got1, err := hashDecideAction(action)
+	if err != nil {
+		t.Fatalf("hashDecideAction failed: %v", err)
+	}
+	got2, err := hashDecideAction(action)
+	if err != nil {
+		t.Fatalf("hashDecideAction failed: %v", err)
+	}
+	if got1 != got2 {
+		t.Fatalf("expected stable hashing, got %q and %q", got1, got2)
+	}
+	if len(got1) != 64 {
+		t.Fatalf("expected hash length 64, got %d", len(got1))
+	}
+}
+
 func TestDecideIdempotentReplay(t *testing.T) {
 	server := makeServer(t)
 	body1 := bytes.NewBufferString(`{"action":{"type":"file.write","resource":"notes.txt"},"text":"contact jane@example.com","request_id":"r1","idempotency_key":"idem-1"}`)
