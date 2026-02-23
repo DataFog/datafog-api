@@ -160,11 +160,31 @@ Supported actions:
 
 Decision receipts are returned in stderr for every executed action.
 
+### OpenAI Codex onboarding UX
+
+For a fast end-to-end workflow, run the bootstrap helper:
+
+```sh
+chmod +x scripts/codex-datafog-setup.sh
+./scripts/codex-datafog-setup.sh --policy-url http://localhost:8080
+source ~/.datafog/codex-datafog.env
+export PATH="$HOME/.datafog/shims:$PATH"
+```
+
+That helper:
+
+- builds `datafog-shim` when needed,
+- installs a managed `codex` shim,
+- writes `~/.datafog/codex-datafog.env`, and
+- prints validation steps.
+
 Managed wrapper scripts are generated in `~/.datafog/shims` by default. To use a wrapper in PATH, add that directory to the front of your `PATH`:
 
 ```sh
 export PATH="$HOME/.datafog/shims:$PATH"
 ```
+
+For the guided onboarding path, follow: `docs/runbooks/datafog-codex-agent-ux.md`.
 
 ```yaml
 apiVersion: apps/v1
