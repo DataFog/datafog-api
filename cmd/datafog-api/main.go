@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/datafog/datafog-api/internal/policy"
@@ -16,6 +19,7 @@ func main() {
 	policyPath := getenv("DATAFOG_POLICY_PATH", "config/policy.json")
 	receiptPath := getenv("DATAFOG_RECEIPT_PATH", "datafog_receipts.jsonl")
 	addr := getenv("DATAFOG_ADDR", ":8080")
+	shutdownTimeout := getenvDuration("DATAFOG_SHUTDOWN_TIMEOUT", 10*time.Second)
 
 	policyData, err := policy.LoadPolicyFromFile(policyPath)
 	if err != nil {
@@ -40,8 +44,34 @@ func main() {
 	}
 
 	log.Printf("datafog-api listening on %s", addr)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatalf("server failed: %v", err)
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.ListenAndServe()
+	}()
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server failed: %v", err)
+		}
+	case <-sig:
+		log.Printf("shutdown signal received")
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+
+		if err := srv.Shutdown(ctx); err != nil {
+			log.Printf("graceful shutdown failed: %v", err)
+			if closeErr := srv.Close(); closeErr != nil && !errors.Is(closeErr, http.ErrServerClosed) {
+				log.Printf("forced close failed: %v", closeErr)
+			}
+		}
+		if err := <-done; err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("server stopped with error: %v", err)
+		}
 	}
 }
 

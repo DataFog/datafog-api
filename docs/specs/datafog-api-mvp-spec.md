@@ -101,6 +101,38 @@ Datafog API v2 will be a single Go service that owns policy decisioning and priv
 - Configurable policy file path and store path via environment variables.
 - Basic structured logs with no raw payload or secret material.
 
+## Production hardening addendum
+
+### Immediate production-readiness requirements
+
+- Add deterministic graceful shutdown behavior.
+  - Handle `SIGINT` and `SIGTERM`.
+  - Drain in-flight requests within a bounded timeout before process exit.
+  - Provide fallback forced close if graceful shutdown fails.
+- Add service-readiness and service-liveness boundaries.
+  - Keep `/health` as liveness baseline.
+  - Add readiness semantics if deployment requires startup dependency checks.
+- Add transport hardening defaults.
+  - Enforce request timeout, read-header timeout, write timeout, idle timeout, and header limits.
+- Add operational controls for bounded resource use.
+  - Limit body sizes at transport boundaries.
+  - Cap idempotency cache/map growth and lifecycle.
+
+### Additional production readiness work before release
+
+- Add authN/Z at the edge (or strict allowlist + service mesh policy), with explicit deny-by-default.
+- Add metrics quality improvements:
+  - Per-endpoint latency distributions, saturation/error-rate alarms.
+  - Route-level and code-path attribution for policy/transform load.
+- Add security hardening checks in CI:
+  - Dependency vulnerability scanning.
+  - Dependency/license/supply-chain policy checks.
+- Add operational guardrails:
+  - Non-root container execution and read-only root filesystem.
+  - Explicit `DATAFOG_*` config schema docs and examples.
+- Add resiliency tests:
+  - Slow client / partial body / invalid content-type / malformed UTF-8 / interrupted shutdown scenarios.
+
 ## Task list for MVP implementation
 
 1. Repo hardening

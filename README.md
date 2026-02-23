@@ -19,6 +19,7 @@ Default configuration:
 - `DATAFOG_WRITE_TIMEOUT`: `10s`
 - `DATAFOG_READ_HEADER_TIMEOUT`: `2s`
 - `DATAFOG_IDLE_TIMEOUT`: `30s`
+- `DATAFOG_SHUTDOWN_TIMEOUT`: `10s`
 
 Durations accept Go duration syntax (for example: `1s`, `500ms`, `2m`).
 

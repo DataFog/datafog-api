@@ -45,4 +45,12 @@ func TestGetenvDuration(t *testing.T) {
 			t.Fatalf("expected 250ms, got %s", got)
 		}
 	})
+
+	t.Run("parse_shutdown_timeout", func(t *testing.T) {
+		t.Setenv("DATAFOG_SHUTDOWN_TIMEOUT", "2s")
+		got := getenvDuration("DATAFOG_SHUTDOWN_TIMEOUT", 10*time.Second)
+		if got != 2*time.Second {
+			t.Fatalf("expected 2s, got %s", got)
+		}
+	})
 }
