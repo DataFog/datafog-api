@@ -679,6 +679,14 @@ func TestValidateMethodAndBadInputs(t *testing.T) {
 		transformResp := httptest.NewRecorder()
 		server.Handler.ServeHTTP(transformResp, transformReq)
 		assertJSONError(t, transformResp, http.StatusUnsupportedMediaType, "unsupported_media_type")
+
+		validCharsetReq := httptest.NewRequest(http.MethodPost, "/v1/anonymize", bytes.NewBufferString(`{"text":"jane@example.com"}`))
+		validCharsetReq.Header.Set("Content-Type", "application/json; charset=utf-8")
+		validCharsetResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(validCharsetResp, validCharsetReq)
+		if validCharsetResp.Code != http.StatusOK {
+			t.Fatalf("expected 200 for valid json content type with charset, got %d", validCharsetResp.Code)
+		}
 	})
 
 	t.Run("request_too_large", func(t *testing.T) {
