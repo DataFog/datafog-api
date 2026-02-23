@@ -32,7 +32,41 @@ func LoadPolicyFromFile(path string) (models.Policy, error) {
 	if policy.PolicyVersion == "" {
 		policy.PolicyVersion = "0001"
 	}
+	if err := ValidatePolicy(policy); err != nil {
+		return policy, err
+	}
 	return policy, nil
+}
+
+func ValidatePolicy(policy models.Policy) error {
+	errors := make([]string, 0)
+	if len(policy.Rules) == 0 {
+		errors = append(errors, "policy must contain at least one rule")
+	}
+
+	seenRuleIDs := map[string]struct{}{}
+	for _, rule := range policy.Rules {
+		if rule.ID == "" {
+			errors = append(errors, "rule missing id")
+		}
+		if _, ok := seenRuleIDs[rule.ID]; ok {
+			errors = append(errors, fmt.Sprintf("duplicate rule id: %s", rule.ID))
+		}
+		seenRuleIDs[rule.ID] = struct{}{}
+		if _, ok := RequiredDecisionInputs[rule.Effect]; !ok {
+			errors = append(errors, fmt.Sprintf("rule %s has unsupported effect: %s", rule.ID, rule.Effect))
+		}
+		for _, requirement := range rule.EntityRequirements {
+			if _, ok := defaultEntityTypes[strings.ToLower(requirement)]; !ok {
+				errors = append(errors, fmt.Sprintf("rule %s references unsupported required entity type: %s", rule.ID, requirement))
+			}
+		}
+	}
+
+	if len(errors) == 0 {
+		return nil
+	}
+	return fmt.Errorf(strings.Join(errors, "; "))
 }
 
 type DecisionContext struct {

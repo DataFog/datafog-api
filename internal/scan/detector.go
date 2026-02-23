@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"sort"
 	"regexp"
 	"strings"
 
@@ -32,7 +33,14 @@ func ScanText(text string, entityFilter []string) []models.ScanFinding {
 	}
 
 	findings := make([]models.ScanFinding, 0)
-	for entityType, re := range DefaultEntityPatterns {
+	entityTypes := make([]string, 0, len(DefaultEntityPatterns))
+	for entityType := range DefaultEntityPatterns {
+		entityTypes = append(entityTypes, entityType)
+	}
+	sort.Strings(entityTypes)
+
+	for _, entityType := range entityTypes {
+		re := DefaultEntityPatterns[entityType]
 		if len(requested) > 0 {
 			if _, ok := requested[entityType]; !ok {
 				continue
