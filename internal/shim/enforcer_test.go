@@ -69,6 +69,14 @@ func (r *fakeFileWriter) WriteFile(path string, data []byte, perm fs.FileMode) e
 	return r.err
 }
 
+type fakeEventRecorder struct {
+	events []DecisionEvent
+}
+
+func (r *fakeEventRecorder) Record(event DecisionEvent) {
+	r.events = append(r.events, event)
+}
+
 func TestShellExecutionAllowed(t *testing.T) {
 	decision := models.DecideResponse{
 		Decision:     models.DecisionAllow,
@@ -142,6 +150,100 @@ func TestShellExecutionDenied(t *testing.T) {
 	}
 	if len(denied.Response.MatchedRules) != 1 || denied.Response.MatchedRules[0] != "deny-shell" {
 		t.Fatalf("expected denied rule reason, got %+v", denied.Response.MatchedRules)
+	}
+}
+
+func TestShellExecutionAllowsInObserveMode(t *testing.T) {
+	decider := &fakeDecisionClient{
+		response: models.DecideResponse{
+			Decision:     models.DecisionDeny,
+			ReceiptID:    "r2",
+			MatchedRules: []string{"deny-shell"},
+		},
+	}
+	runner := &fakeCommandRunner{out: []byte("ok\n")}
+	recorder := &fakeEventRecorder{}
+	interceptor := NewGate(decider, WithMode(ModeObserve), WithEventSink(recorder))
+	interceptor.Runner = runner
+
+	res, out, err := interceptor.ExecuteShell(context.Background(), "rm", []string{"-rf", "/tmp"}, "", []models.ScanFinding{}, false)
+	if err != nil {
+		t.Fatalf("expected no error in observe mode, got %v", err)
+	}
+	if string(out) != "ok\n" {
+		t.Fatalf("expected command output, got %q", string(out))
+	}
+	if res.Decision != models.DecisionDeny {
+		t.Fatalf("expected deny decision for observability, got %q", res.Decision)
+	}
+	if !runner.called {
+		t.Fatalf("expected runner to execute in observe mode")
+	}
+	if len(recorder.events) != 1 {
+		t.Fatalf("expected one event, got %d", len(recorder.events))
+	}
+	if recorder.events[0].Mode != string(ModeObserve) {
+		t.Fatalf("expected observe event mode, got %q", recorder.events[0].Mode)
+	}
+}
+
+func TestShellExecutionPolicyErrorPassesInObserveMode(t *testing.T) {
+	decider := &fakeDecisionClient{
+		err: errors.New("policy unavailable"),
+	}
+	runner := &fakeCommandRunner{out: []byte("ok\n")}
+	recorder := &fakeEventRecorder{}
+	interceptor := NewGate(decider, WithMode(ModeObserve), WithEventSink(recorder))
+	interceptor.Runner = runner
+
+	_, out, err := interceptor.ExecuteShell(context.Background(), "ls", nil, "", nil, false)
+	if err != nil {
+		t.Fatalf("expected no error when API is unreachable in observe mode, got %v", err)
+	}
+	if string(out) != "ok\n" {
+		t.Fatalf("expected command output, got %q", string(out))
+	}
+	if len(recorder.events) != 1 || recorder.events[0].CheckError == "" {
+		t.Fatalf("expected policy error in event, got %#v", recorder.events)
+	}
+}
+
+func TestCommandAdapterExecution(t *testing.T) {
+	decider := &fakeDecisionClient{
+		response: models.DecideResponse{
+			Decision: models.DecisionAllow,
+		},
+	}
+	runner := &fakeCommandRunner{out: []byte("run\n")}
+	interceptor := &Gate{
+		Client: decider,
+		Runner: runner,
+	}
+
+	res, out, err := interceptor.ExecuteCommand(context.Background(), "git", "/usr/bin/git", []string{"status"}, "", nil, false)
+	if err != nil {
+		t.Fatalf("expected allow, got %v", err)
+	}
+	if string(out) != "run\n" {
+		t.Fatalf("expected command output, got %q", string(out))
+	}
+	if !runner.called {
+		t.Fatalf("expected command runner")
+	}
+	if runner.cmd != "/usr/bin/git" {
+		t.Fatalf("expected target binary, got %q", runner.cmd)
+	}
+	if decider.lastReq.Action.Type != "command.exec" {
+		t.Fatalf("expected command.exec action, got %q", decider.lastReq.Action.Type)
+	}
+	if decider.lastReq.Action.Tool != "git" {
+		t.Fatalf("expected tool git, got %q", decider.lastReq.Action.Tool)
+	}
+	if decider.lastReq.Action.Command != "status" {
+		t.Fatalf("expected command to be first arg, got %q", decider.lastReq.Action.Command)
+	}
+	if res.ReceiptID != "" {
+		t.Fatalf("did not expect receipt id in mocked response")
 	}
 }
 

@@ -132,9 +132,15 @@ Use `/health` for liveness/readiness checks and mount writable storage for recei
 go build -o datafog-shim ./cmd/datafog-shim
 
 ./datafog-shim shell --policy-url http://localhost:8080 rm -rf /tmp/test
+./datafog-shim hooks install --target /usr/bin/git git
+DATAFOG_SHIM_POLICY_URL=http://localhost:8080 git status
 ```
 
-The shim calls `/v1/decide` before side-effect actions and only permits actions that resolve to:
+The shim supports explicit API mode and wrapper-based PATH interception.
+
+`datafog-shim` can call policy checks directly for an arbitrary adapter/action (`run`) or install command shims (`hooks install`) that wrap target binaries.
+
+`datafog-shim` calls `/v1/decide` before side-effect actions and only permits actions that resolve to:
 
 - `allow`
 - `allow_with_redaction`
@@ -144,10 +150,20 @@ Actions that resolve to `transform` or `deny` are blocked until the caller appli
 Supported actions:
 
 - `shell` (command + args)
+- `run --adapter <name> --target <binary> <args...>` (generic adapter path)
 - `read-file <path>`
 - `write-file <path> <text>`
+- `hooks install <command>` (PATH interception with generated wrapper)
+- `hooks list`
+- `hooks uninstall <command>`
 
 Decision receipts are returned in stderr for every executed action.
+
+Managed wrapper scripts are generated in `~/.datafog/shims` by default. To use a wrapper in PATH, add that directory to the front of your `PATH`:
+
+```sh
+export PATH="$HOME/.datafog/shims:$PATH"
+```
 
 ```yaml
 apiVersion: apps/v1
