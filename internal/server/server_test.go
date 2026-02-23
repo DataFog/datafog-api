@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/datafog/datafog-api/internal/models"
 	"github.com/datafog/datafog-api/internal/receipts"
@@ -42,6 +44,46 @@ func TestHealthEndpoint(t *testing.T) {
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
+	var got models.HealthResponse
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if got.Status != "ok" {
+		t.Fatalf("expected status ok, got %q", got.Status)
+	}
+	if got.PolicyID != "test" {
+		t.Fatalf("expected policy id test, got %q", got.PolicyID)
+	}
+	if got.PolicyVersion != "v1" {
+		t.Fatalf("expected policy version v1, got %q", got.PolicyVersion)
+	}
+	if _, err := time.Parse(time.RFC3339, got.StartedAt); err != nil {
+		t.Fatalf("expected valid RFC3339 started_at, got %q", got.StartedAt)
+	}
+}
+
+func TestPolicyVersionEndpoint(t *testing.T) {
+	server := makeServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/v1/policy/version", nil)
+	resp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+
+	var got struct {
+		PolicyID      string `json:"policy_id"`
+		PolicyVersion string `json:"policy_version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if got.PolicyID != "test" {
+		t.Fatalf("expected policy id test, got %q", got.PolicyID)
+	}
+	if got.PolicyVersion != "v1" {
+		t.Fatalf("expected policy version v1, got %q", got.PolicyVersion)
+	}
 }
 
 func TestScanEndpoint(t *testing.T) {
@@ -58,8 +100,75 @@ func TestScanEndpoint(t *testing.T) {
 	if err := json.NewDecoder(resp.Body).Decode(&scanned); err != nil {
 		t.Fatalf("decode failed: %v", err)
 	}
+	if scanned.RequestID != "" {
+		t.Fatalf("expected empty request id, got %q", scanned.RequestID)
+	}
+	if scanned.PolicyID != "test" {
+		t.Fatalf("expected policy id test, got %q", scanned.PolicyID)
+	}
+	if scanned.PolicyVersion != "v1" {
+		t.Fatalf("expected policy version v1, got %q", scanned.PolicyVersion)
+	}
 	if len(scanned.Findings) != 1 {
 		t.Fatalf("expected one finding, got %d", len(scanned.Findings))
+	}
+}
+
+func TestTransformEndpoint(t *testing.T) {
+	server := makeServer(t)
+	body := bytes.NewBufferString(`{"text":"contact jane@example.com","mode":"mask"}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/transform", body)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+
+	var transformed models.TransformResponse
+	if err := json.NewDecoder(resp.Body).Decode(&transformed); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if transformed.PolicyID != "test" {
+		t.Fatalf("expected policy id test, got %q", transformed.PolicyID)
+	}
+	if transformed.PolicyVersion != "v1" {
+		t.Fatalf("expected policy version v1, got %q", transformed.PolicyVersion)
+	}
+	if transformed.Stats.EntitiesTransformed == 0 {
+		t.Fatalf("expected transformed entity count > 0")
+	}
+	if transformed.Stats.ModesApplied == "" {
+		t.Fatalf("expected modes applied")
+	}
+	if strings.Contains(transformed.Output, "jane@example.com") {
+		t.Fatalf("expected redacted output, got %q", transformed.Output)
+	}
+}
+
+func TestAnonymizeEndpoint(t *testing.T) {
+	server := makeServer(t)
+	body := bytes.NewBufferString(`{"text":"contact jane@example.com","findings":[{"entity_type":"email","value":"jane@example.com","start":8,"end":23,"confidence":0.99}]}`)
+	req := httptest.NewRequest(http.MethodPost, "/v1/anonymize", body)
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	if resp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.Code)
+	}
+
+	var anonymized models.TransformResponse
+	if err := json.NewDecoder(resp.Body).Decode(&anonymized); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if anonymized.PolicyID != "test" {
+		t.Fatalf("expected policy id test, got %q", anonymized.PolicyID)
+	}
+	if anonymized.Stats.EntitiesTransformed != 1 {
+		t.Fatalf("expected one transformed entity, got %d", anonymized.Stats.EntitiesTransformed)
+	}
+	if strings.Contains(anonymized.Output, "jane@example.com") {
+		t.Fatalf("expected anonymized output, got %q", anonymized.Output)
 	}
 }
 
@@ -99,6 +208,101 @@ func TestDecideAndReceiptFlow(t *testing.T) {
 	}
 }
 
+func TestValidateMethodAndBadInputs(t *testing.T) {
+	server := makeServer(t)
+	t.Run("method_not_allowed", func(t *testing.T) {
+		tests := []struct {
+			name       string
+			method     string
+			path       string
+			wantStatus int
+		}{
+			{name: "health", method: http.MethodPost, path: "/health", wantStatus: http.StatusMethodNotAllowed},
+			{name: "policy_version", method: http.MethodPost, path: "/v1/policy/version", wantStatus: http.StatusMethodNotAllowed},
+			{name: "scan", method: http.MethodGet, path: "/v1/scan", wantStatus: http.StatusMethodNotAllowed},
+			{name: "decide", method: http.MethodGet, path: "/v1/decide", wantStatus: http.StatusMethodNotAllowed},
+			{name: "transform", method: http.MethodGet, path: "/v1/transform", wantStatus: http.StatusMethodNotAllowed},
+			{name: "anonymize", method: http.MethodGet, path: "/v1/anonymize", wantStatus: http.StatusMethodNotAllowed},
+			{name: "receipts", method: http.MethodPost, path: "/v1/receipts/abc", wantStatus: http.StatusMethodNotAllowed},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				req := httptest.NewRequest(tc.method, tc.path, nil)
+				resp := httptest.NewRecorder()
+				server.Handler.ServeHTTP(resp, req)
+				assertJSONError(t, resp, tc.wantStatus, "method_not_allowed")
+			})
+		}
+	})
+
+	t.Run("bad_request_payloads", func(t *testing.T) {
+		scanReq := httptest.NewRequest(http.MethodPost, "/v1/scan", bytes.NewBufferString(`{"text":""}`))
+		scanReq.Header.Set("Content-Type", "application/json")
+		scanResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(scanResp, scanReq)
+		assertJSONError(t, scanResp, http.StatusBadRequest, "invalid_request")
+
+		decideReq := httptest.NewRequest(http.MethodPost, "/v1/decide", bytes.NewBufferString(`{"action":{"type":""},"text":"jane@example.com"}`))
+		decideReq.Header.Set("Content-Type", "application/json")
+		decideResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(decideResp, decideReq)
+		assertJSONError(t, decideResp, http.StatusBadRequest, "invalid_request")
+
+		transformReq := httptest.NewRequest(http.MethodPost, "/v1/transform", bytes.NewBufferString(`{"text":""}`))
+		transformReq.Header.Set("Content-Type", "application/json")
+		transformResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(transformResp, transformReq)
+		assertJSONError(t, transformResp, http.StatusBadRequest, "invalid_request")
+
+		anonymizeReq := httptest.NewRequest(http.MethodPost, "/v1/anonymize", bytes.NewBufferString(`{"text":""}`))
+		anonymizeReq.Header.Set("Content-Type", "application/json")
+		anonymizeResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(anonymizeResp, anonymizeReq)
+		assertJSONError(t, anonymizeResp, http.StatusBadRequest, "invalid_request")
+	})
+
+	t.Run("missing_receipt", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/receipts/does-not-exist", nil)
+		resp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		assertJSONError(t, resp, http.StatusNotFound, "not_found")
+
+		req = httptest.NewRequest(http.MethodGet, "/v1/receipts/", nil)
+		resp = httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		assertJSONError(t, resp, http.StatusNotFound, "not_found")
+	})
+}
+
+func TestInvalidJSONHandling(t *testing.T) {
+	server := makeServer(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/scan", bytes.NewBufferString(`{`))
+	req.Header.Set("Content-Type", "application/json")
+	resp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	assertJSONError(t, resp, http.StatusBadRequest, "invalid_request")
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/decide", bytes.NewBufferString(`{`))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	assertJSONError(t, resp, http.StatusBadRequest, "invalid_request")
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/transform", bytes.NewBufferString(`{`))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	assertJSONError(t, resp, http.StatusBadRequest, "invalid_request")
+
+	req = httptest.NewRequest(http.MethodPost, "/v1/anonymize", bytes.NewBufferString(`{`))
+	req.Header.Set("Content-Type", "application/json")
+	resp = httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	assertJSONError(t, resp, http.StatusBadRequest, "invalid_request")
+}
+
 func TestDenyDecision(t *testing.T) {
 	server := makeServer(t)
 	body := bytes.NewBufferString(`{"action":{"type":"shell.exec","resource":"curl"},"text":"api_key=ABCD1234EFGH5678"}`)
@@ -115,5 +319,21 @@ func TestDenyDecision(t *testing.T) {
 	}
 	if decided.Decision != models.DecisionDeny {
 		t.Fatalf("expected deny, got %q", decided.Decision)
+	}
+}
+
+func assertJSONError(t *testing.T, resp *httptest.ResponseRecorder, status int, code string) {
+	t.Helper()
+	if resp.Code != status {
+		t.Fatalf("expected %d, got %d", status, resp.Code)
+	}
+	var got struct {
+		Error models.APIError `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode error body failed: %v", err)
+	}
+	if got.Error.Code != code {
+		t.Fatalf("expected error code %q, got %q", code, got.Error.Code)
 	}
 }
