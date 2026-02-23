@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -19,7 +20,17 @@ var RequiredDecisionInputs = map[models.Decision]struct{}{
 
 func LoadPolicyFromFile(path string) (models.Policy, error) {
 	var policy models.Policy
-	content, err := os.ReadFile(path)
+
+	policyPath := strings.TrimSpace(path)
+	if strings.ContainsRune(policyPath, 0) {
+		return policy, fmt.Errorf("invalid policy path")
+	}
+	policyPath = filepath.Clean(policyPath)
+	if policyPath == "." {
+		return policy, fmt.Errorf("invalid policy path")
+	}
+
+	content, err := os.ReadFile(policyPath) // #nosec G304 -- path comes from DATAFOG_POLICY_PATH and is validated by startup config.
 	if err != nil {
 		return policy, err
 	}

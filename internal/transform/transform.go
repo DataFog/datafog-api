@@ -1,7 +1,7 @@
 package transform
 
 import (
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"sort"
@@ -82,7 +82,7 @@ func replacementForMode(mode models.TransformMode, value string) string {
 }
 
 func deterministicPrefix(value string) string {
-	hash := sha1.Sum([]byte(value))
+	hash := sha256.Sum256([]byte(value))
 	encoded := hex.EncodeToString(hash[:])
 	return encoded[:8]
 }

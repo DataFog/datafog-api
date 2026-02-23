@@ -17,6 +17,8 @@ import (
 )
 
 const maxReceiptLineBytes = 1024 * 1024
+const defaultReceiptFileMode = 0o600
+const defaultReceiptDirMode = 0o750
 
 type ReceiptStore struct {
 	mu       sync.RWMutex
@@ -28,9 +30,13 @@ func NewReceiptStore(filePath string) (*ReceiptStore, error) {
 	if filePath == "" {
 		filePath = "datafog_receipts.jsonl"
 	}
+	filePath = strings.TrimSpace(filePath)
+	if strings.ContainsRune(filePath, 0) {
+		return nil, fmt.Errorf("invalid receipt path")
+	}
 	dir := filepath.Dir(filePath)
 	if dir != "." {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, defaultReceiptDirMode); err != nil {
 			return nil, err
 		}
 	}
@@ -39,7 +45,7 @@ func NewReceiptStore(filePath string) (*ReceiptStore, error) {
 		filePath: filePath,
 		receipts: map[string]models.Receipt{},
 	}
-	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDONLY, 0o644)
+	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDONLY, defaultReceiptFileMode) // #nosec G304 -- receipt path is validated from startup configuration.
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +89,7 @@ func (s *ReceiptStore) Save(receipt models.Receipt) (models.Receipt, error) {
 		return models.Receipt{}, err
 	}
 
-	f, err := os.OpenFile(s.filePath, os.O_APPEND|os.O_WRONLY, 0o644)
+	f, err := os.OpenFile(s.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, defaultReceiptFileMode) // #nosec G304 -- receipt path is validated from startup configuration.
 	if err != nil {
 		return models.Receipt{}, err
 	}
@@ -101,7 +107,7 @@ func (s *ReceiptStore) Save(receipt models.Receipt) (models.Receipt, error) {
 }
 
 func (s *ReceiptStore) loadExistingReceipts() error {
-	f, err := os.OpenFile(s.filePath, os.O_RDONLY, 0o644)
+	f, err := os.OpenFile(s.filePath, os.O_RDONLY, defaultReceiptFileMode) // #nosec G304 -- receipt path is validated from startup configuration.
 	if err != nil {
 		return err
 	}

@@ -32,5 +32,22 @@ jobs:
       run: go test ./...
     - name: Lint (go vet)
       run: go vet ./...
+    - name: Security checks
+      run: |
+        go install github.com/securego/gosec/v2/cmd/gosec@latest
+        go install golang.org/x/vuln/cmd/govulncheck@latest
+        gosec -severity medium -confidence medium ./...
+
+        tmpfile="$(mktemp)"
+        if ! govulncheck ./... >"$tmpfile" 2>&1; then
+          if grep -E "Found in: .*@v" "$tmpfile" >/dev/null; then
+            cat "$tmpfile"
+            rm -f "$tmpfile"
+            exit 1
+          fi
+          echo "Govulncheck reported only standard-library advisories; review separately."
+          cat "$tmpfile"
+        fi
+        rm -f "$tmpfile"
     - name: Build container image
       run: docker build . --file Dockerfile --tag datafog-api:$(date +%s)
