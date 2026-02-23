@@ -673,6 +673,18 @@ func TestValidateMethodAndBadInputs(t *testing.T) {
 		server.Handler.ServeHTTP(resp, req)
 		assertJSONError(t, resp, http.StatusNotFound, "not_found")
 	})
+
+	t.Run("not_found_routes", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/v1/does-not-exist", nil)
+		resp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		assertJSONError(t, resp, http.StatusNotFound, "not_found")
+
+		req = httptest.NewRequest(http.MethodGet, "/completely/missing", nil)
+		resp = httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		assertJSONError(t, resp, http.StatusNotFound, "not_found")
+	})
 }
 
 func TestInvalidJSONHandling(t *testing.T) {

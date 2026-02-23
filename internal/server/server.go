@@ -65,7 +65,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/transform", s.handleTransform)
 	mux.HandleFunc("/v1/anonymize", s.handleAnonymize)
 	mux.HandleFunc("/v1/receipts/", s.handleReceipt)
-	return mux
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handler, pattern := mux.Handler(r)
+		if pattern == "" {
+			s.respondError(w, http.StatusNotFound, models.APIError{Code: "not_found", Message: "endpoint not found", RequestID: requestID(r)})
+			return
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
