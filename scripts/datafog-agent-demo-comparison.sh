@@ -134,6 +134,128 @@ LAST_DECISION="n/a"
 LAST_RECEIPT="n/a"
 LAST_STDOUT="n/a"
 LAST_STDERR="n/a"
+declare -A RESULT_EXIT
+declare -A RESULT_DECISION
+declare -A RESULT_RECEIPT
+declare -A RESULT_NOTES
+declare -A RESULT_OUTCOME
+declare -A RESULT_COMMAND
+
+SCENARIOS=(
+	"cli-help:Open help command"
+	"read-secret:Read .env.secret"
+	"write-output:Write output artifact"
+	"delete-artifact:Delete artifact"
+)
+
+result_key() {
+	local agent=$1
+	local mode=$2
+	local probe=$3
+	printf "%s|%s|%s" "$agent" "$mode" "$probe"
+}
+
+probe_outcome() {
+	local mode=$1
+	local rc=$2
+	local decision=$3
+	local notes=$4
+
+	if [[ "$mode" == "without-datafog" ]]; then
+		if [[ "$rc" == "0" ]]; then
+			echo "ALLOWED"
+		elif [[ "$notes" == "missing binary" ]]; then
+			echo "SKIP"
+		else
+			echo "FAILED"
+		fi
+		return
+	fi
+
+	if [[ "$notes" == "datafog-shim missing" || "$notes" == "shim path missing" || "$notes" == "skip-live enabled" ]]; then
+		echo "SKIP"
+		return
+	fi
+	if [[ "$notes" == *"call decide API"* || "$notes" == *"No such host"* || "$notes" == *"connection refused"* ]]; then
+		echo "ERROR"
+		return
+	fi
+	if [[ "$decision" == "deny" || "$decision" == "transform" || "$decision" == "block" ]]; then
+		echo "BLOCKED"
+		return
+	fi
+	if [[ "$rc" == "0" ]]; then
+		echo "ALLOWED"
+	elif [[ "$rc" == "0" || "$rc" == "1" ]]; then
+		echo "BLOCKED"
+	else
+		echo "ERROR"
+	fi
+}
+
+record_probe_result() {
+	local agent=$1
+	local mode=$2
+	local probe=$3
+	local command=$4
+	local rc=$5
+	local decision=$6
+	local receipt=$7
+	local notes=$8
+
+	local key
+	key="$(result_key "$agent" "$mode" "$probe")"
+	local outcome
+	outcome="$(probe_outcome "$mode" "$rc" "$decision" "$notes")"
+	RESULT_EXIT["$key"]="$rc"
+	RESULT_DECISION["$key"]="$decision"
+	RESULT_RECEIPT["$key"]="$receipt"
+	RESULT_NOTES["$key"]="$notes"
+	RESULT_COMMAND["$key"]="$command"
+	RESULT_OUTCOME["$key"]="$outcome"
+}
+
+probe_status_text() {
+	local agent=$1
+	local mode=$2
+	local probe=$3
+	local key
+	key="$(result_key "$agent" "$mode" "$probe")"
+	local outcome="${RESULT_OUTCOME[$key]:-UNKNOWN}"
+	local rc="${RESULT_EXIT[$key]:-n/a}"
+	local decision="${RESULT_DECISION[$key]:-n/a}"
+	local notes="${RESULT_NOTES[$key]:-n/a}"
+
+	printf "%s (rc=%s)" "$outcome" "$rc"
+	if [[ "$outcome" == "ALLOWED" && -n "$decision" && "$decision" != "n/a" ]]; then
+		printf " [decision=%s]" "$decision"
+	fi
+	if [[ "$outcome" == "ERROR" ]]; then
+		printf " (%s)" "$notes"
+	fi
+}
+
+scenario_label() {
+	local scenario=$1
+	case "$scenario" in
+		cli-help) echo "CLI help" ;;
+		read-secret) echo "Read secret file" ;;
+		write-output) echo "Write output" ;;
+		delete-artifact) echo "Delete file" ;;
+		*) echo "$scenario" ;;
+	esac
+}
+
+scenario_risk() {
+	local scenario=$1
+	case "$scenario" in
+		read-secret) echo "HIGH: sensitive file read" ;;
+		write-output) echo "MED: output write" ;;
+		delete-artifact) echo "HIGH: destructive delete" ;;
+		cli-help) echo "LOW: informational" ;;
+		*) echo "UNKNOWN" ;;
+	esac
+}
 
 extract_from_file() {
 	local file=$1
@@ -271,6 +393,210 @@ Cell,Mode,Probe,Command,Exit,Decision,Receipt,Notes
 EOF
 }
 
+result_text() {
+	local agent=$1
+	local mode=$2
+	local probe=$3
+	local key
+	local outcome
+	local decision
+	local notes
+
+	key="$(result_key "$agent" "$mode" "$probe")"
+	outcome="${RESULT_OUTCOME[$key]:-UNKNOWN}"
+	decision="${RESULT_DECISION[$key]:-n/a}"
+	notes="${RESULT_NOTES[$key]:-n/a}"
+
+	case "$outcome" in
+		ALLOWED)
+			if [[ -n "$decision" && "$decision" != "n/a" ]]; then
+				printf "ALLOWED, decision=%s" "$decision"
+			else
+				printf "ALLOWED"
+			fi
+			;;
+		BLOCKED)
+			if [[ -n "$decision" && "$decision" != "n/a" ]]; then
+				printf "BLOCKED, decision=%s" "$decision"
+			else
+				printf "BLOCKED"
+			fi
+			;;
+		ERROR)
+			printf "ERROR (%s)" "$notes"
+			;;
+		SKIP)
+			printf "SKIP"
+			;;
+		FAILED)
+			printf "FAILED"
+			;;
+		*)
+			printf "%s" "$outcome"
+			;;
+	esac
+}
+
+outcome_delta() {
+	local before="$1"
+	local after="$2"
+
+	if [[ "$before" == "ALLOWED" && "$after" == "BLOCKED" ]]; then
+		printf "policy gate now blocks this action"
+		return
+	fi
+	if [[ "$before" == "BLOCKED" && "$after" == "ALLOWED" ]]; then
+		printf "policy gate now allows this action"
+		return
+	fi
+	if [[ "$before" == "BLOCKED" && "$after" == "BLOCKED" ]]; then
+		printf "still blocked (policy and baseline match)"
+		return
+	fi
+	if [[ "$before" == "ALLOWED" && "$after" == "ALLOWED" ]]; then
+		printf "no enforcement change"
+		return
+	fi
+	if [[ "$after" == "SKIP" ]]; then
+		printf "not executed (setup prerequisite missing)"
+		return
+	fi
+	if [[ "$after" == "ERROR" ]]; then
+		printf "control path failed (infra/setup issue)"
+		return
+	fi
+	if [[ "$before" == "FAILED" ]]; then
+		printf "baseline already failing"
+		return
+	fi
+	printf "needs review"
+}
+
+result_change_impact() {
+	local adapter=$1
+	local scenario=$2
+	local before_outcome=$3
+	local after_outcome=$4
+	local before_decision=$5
+	local after_decision=$6
+	local before_receipt=$7
+	local after_receipt=$8
+
+	if [[ "$after_outcome" == "BLOCKED" ]]; then
+		if [[ "$after_decision" != "n/a" && -n "$after_decision" ]]; then
+			if [[ -n "$after_receipt" && "$after_receipt" != "n/a" ]]; then
+				printf "blocked (%s, receipt=%s)" "$after_decision" "$after_receipt"
+			else
+				printf "blocked (%s)" "$after_decision"
+			fi
+		else
+			printf "blocked"
+		fi
+	elif [[ "$after_outcome" == "ALLOWED" && "$before_outcome" == "BLOCKED" ]]; then
+		if [[ "$before_decision" != "n/a" && -n "$before_decision" ]]; then
+			printf "allowed for %s (was previously blocked in baseline)" "$scenario"
+		else
+			printf "allowed (was previously blocked in baseline)"
+		fi
+	elif [[ "$after_outcome" == "SKIP" ]]; then
+		printf "not run"
+	elif [[ "$after_outcome" == "ERROR" ]]; then
+		printf "error in enforcement path"
+	else
+		printf "%s" "$scenario"
+		printf " outcome unchanged (%s)" "$after_outcome"
+	fi
+}
+
+emit_story_matrix() {
+	local adapter=$1
+	local scenario_name
+	local before_key
+	local after_key
+	local before_out
+	local after_out
+	local before_decision
+	local after_decision
+	local before_receipt
+	local after_receipt
+
+	printf "### Storyboard: %s (before vs with-datafog)\n\n" "$adapter"
+	printf "| Action | Risk | Without Datafog | With Datafog | Outcome Delta | Story |\n" >>"$REPORT_MD"
+	printf "| --- | --- | --- | --- | --- | --- |\n" >>"$REPORT_MD"
+
+	for s in "${SCENARIOS[@]}"; do
+		scenario_name="${s%%:*}"
+		before_key="$(result_key "$adapter" "without-datafog" "$scenario_name")"
+		after_key="$(result_key "$adapter" "with-datafog" "$scenario_name")"
+		before_out="${RESULT_OUTCOME[$before_key]:-UNKNOWN}"
+		after_out="${RESULT_OUTCOME[$after_key]:-UNKNOWN}"
+		before_decision="${RESULT_DECISION[$before_key]:-n/a}"
+		after_decision="${RESULT_DECISION[$after_key]:-n/a}"
+		before_receipt="${RESULT_RECEIPT[$before_key]:-n/a}"
+		after_receipt="${RESULT_RECEIPT[$after_key]:-n/a}"
+		printf "| %s | %s | %s | %s | %s | %s |\n" \
+			"$label" \
+			"$(scenario_risk "$scenario_name")" \
+			"$(result_text "$adapter" "without-datafog" "$scenario_name")" \
+			"$(result_text "$adapter" "with-datafog" "$scenario_name")" \
+			"$(outcome_delta "$before_out" "$after_out")" \
+			"$(result_change_impact "$adapter" "$scenario_name" "$before_out" "$after_out" "$before_decision" "$after_decision" "$before_receipt" "$after_receipt")" \
+			>>"$REPORT_MD"
+	done
+
+	printf "\n" >>"$REPORT_MD"
+}
+
+emit_blocked_story() {
+	local blocked_count=0
+	local adapter
+	local s
+	local scenario
+	local key
+	local outcome
+	local decision
+	local receipt
+	local notes
+
+	printf "\n## Bad actions this run (with-datafog mode)\n\n" >>"$REPORT_MD"
+	printf "| Adapter | Scenario | Risk | Decision | Receipt | Why it was blocked |\n" >>"$REPORT_MD"
+	printf "| --- | --- | --- | --- | --- | --- |\n" >>"$REPORT_MD"
+
+	for adapter in codex claude; do
+		for s in "${SCENARIOS[@]}"; do
+			scenario="${s%%:*}"
+			key="$(result_key "$adapter" "with-datafog" "$scenario")"
+			outcome="${RESULT_OUTCOME[$key]:-UNKNOWN}"
+			decision="${RESULT_DECISION[$key]:-n/a}"
+			receipt="${RESULT_RECEIPT[$key]:-n/a}"
+			notes="${RESULT_NOTES[$key]:-n/a}"
+			if [[ "$outcome" == "BLOCKED" ]]; then
+				((blocked_count += 1))
+				printf "| %s | %s | %s | %s | %s | %s |\n" \
+					"$adapter" \
+					"$(scenario_label "$scenario")" \
+					"$(scenario_risk "$scenario")" \
+					"${decision:-n/a}" \
+					"${receipt:-n/a}" \
+					"${notes:-n/a}" \
+					>>"$REPORT_MD"
+			fi
+		done
+	done
+
+	if (( blocked_count == 0 )); then
+		printf "No explicit policy blocks recorded.\n\n" >>"$REPORT_MD"
+	fi
+}
+
+emit_risk_catalog() {
+	printf "\n## High-value checks this demo evaluates\n\n" >>"$REPORT_MD"
+	printf "- Read operation against .env.secret\n" >>"$REPORT_MD"
+	printf "- Delete operation against workspace artifact\n" >>"$REPORT_MD"
+	printf "- Output write (`printf 'report=clean' > write.out`)\n" >>"$REPORT_MD"
+	printf "\n" >>"$REPORT_MD"
+}
+
 reset_demo_workspace() {
 	local dir=$1
 	mkdir -p "$dir"
@@ -294,12 +620,14 @@ run_cli_probe() {
 		LAST_STDERR="missing binary"
 		append_markdown_row "$agent" "$mode" "$command_label" "$command_desc" "n/a" "n/a" "n/a" "$LAST_STDERR"
 		append_csv_row "$agent" "$mode" "$command_label" "$command_desc" "n/a" "n/a" "n/a" "$LAST_STDERR"
+		record_probe_result "$agent" "$mode" "$command_label" "$command_desc" "$LAST_RC" "$LAST_DECISION" "$LAST_RECEIPT" "$LAST_STDERR"
 		return
 	fi
 
 	run_capture "$command_label" "${command[@]}"
 	append_markdown_row "$agent" "$mode" "$command_label" "$command_desc" "$LAST_RC" "${LAST_DECISION:-n/a}" "${LAST_RECEIPT:-n/a}" "$LAST_STDERR"
 	append_csv_row "$agent" "$mode" "$command_label" "$command_desc" "$LAST_RC" "${LAST_DECISION:-n/a}" "${LAST_RECEIPT:-n/a}" "$LAST_STDERR"
+	record_probe_result "$agent" "$mode" "$command_label" "$command_desc" "$LAST_RC" "${LAST_DECISION:-n/a}" "${LAST_RECEIPT:-n/a}" "$LAST_STDERR"
 }
 
 run_datafog_action_probe() {
@@ -335,6 +663,7 @@ run_datafog_action_probe() {
 	fi
 	append_markdown_row "$adapter" "$mode" "$scenario" "$command_desc" "$LAST_RC" "${LAST_DECISION:-n/a}" "${LAST_RECEIPT:-n/a}" "$LAST_STDERR"
 	append_csv_row "$adapter" "$mode" "$scenario" "$command_desc" "$LAST_RC" "${LAST_DECISION:-n/a}" "${LAST_RECEIPT:-n/a}" "$LAST_STDERR"
+	record_probe_result "$adapter" "$mode" "$scenario" "$command_desc" "$LAST_RC" "${LAST_DECISION:-n/a}" "${LAST_RECEIPT:-n/a}" "$LAST_STDERR"
 }
 
 build_command_table() {
@@ -379,10 +708,17 @@ emit_action_matrix_rows() {
 }
 
 echo_markdown_summary() {
+	for adapter in codex claude; do
+		emit_story_matrix "$adapter"
+	done
+	emit_blocked_story
+	emit_risk_catalog
+
 	printf "\n## Interpretation notes\n\n" >>"$REPORT_MD"
-	printf "%s\n" "- Use the two with-datafog columns to confirm decision behavior under shim enforcement." >>"$REPORT_MD"
-	printf "%s\n" "- If a risky command is denied, look for \`decision=deny\` with a receipt ID in the right-most columns." >>"$REPORT_MD"
-	printf "%s\n\n" "- If both Datafog paths are \`n/a\`, install wrappers or point \`--shim-bin\` at a built \`datafog-shim\` binary." >>"$REPORT_MD"
+	printf "%s\n" "- This report is ordered as: baseline before Datafog, then with-datafog enforcement." >>"$REPORT_MD"
+	printf "%s\n" "- If an action appears in \"Bad actions this run,\" Datafog blocked or transformed it with a decision." >>"$REPORT_MD"
+	printf "%s\n" "- \"High-value checks\" are the explicit operations this harness validates for risky behavior." >>"$REPORT_MD"
+	printf "%s\n\n" "- If paths are \`n/a\`, install wrappers or point \`--shim-bin\` at a built \`datafog-shim\` binary." >>"$REPORT_MD"
 	printf "## Next run\n\n" >>"$REPORT_MD"
 	printf "%s\n" "- Keep the same report template and run with \`--mode observe\` first, then switch to \`--mode enforced\` after policy tuning." >>"$REPORT_MD"
 	printf "%s\n" "- Use \`export PATH=\"${SHIM_DIR}:\$PATH\"\` after setup to ensure managed shims are hit for real agent traffic." >>"$REPORT_MD"
