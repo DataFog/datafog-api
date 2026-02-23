@@ -1,0 +1,46 @@
+{
+  "policy_id": "datafog-mvp",
+  "policy_version": "v2026-02-23-1",
+  "description": "MVP policy with deterministic action + entity gating",
+  "updated_at": "2026-02-23T00:00:00Z",
+  "rules": [
+    {
+      "id": "deny-shell-api-key",
+      "description": "Deny shell actions when API key is present in payload",
+      "priority": 100,
+      "effect": "deny",
+      "match": {
+        "action_types": ["shell.exec"]
+      },
+      "entity_requirements": ["api_key"]
+    },
+    {
+      "id": "transform-sensitive-file-write",
+      "description": "Redact sensitive entities before file writes",
+      "priority": 80,
+      "effect": "allow_with_redaction",
+      "match": {
+        "action_types": ["file.write", "http.request", "shell.exec"]
+      },
+      "entity_requirements": ["email", "phone", "ssn", "api_key", "credit_card"]
+    },
+    {
+      "id": "allow-file-read",
+      "description": "Allow reads from files",
+      "priority": 40,
+      "effect": "allow",
+      "match": {
+        "action_types": ["file.read"]
+      }
+    },
+    {
+      "id": "allow-annotate",
+      "description": "Allow annotation-only action to support non-side-effect checks",
+      "priority": 10,
+      "effect": "allow",
+      "match": {
+        "action_types": ["annotation.default", "annotation.custom"]
+      }
+    }
+  ]
+}
