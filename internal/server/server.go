@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
+	"mime"
 	"net/http"
 	"strings"
 	"sync"
@@ -28,6 +30,10 @@ type Server struct {
 	transforms map[string]idempotentCachedResponse
 	anonymizes map[string]idempotentCachedResponse
 }
+
+const (
+	maxRequestBodyBytes int64 = 1024 * 1024 // 1 MiB
+)
 
 type idempotentDecision struct {
 	requestHash string
@@ -105,10 +111,15 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusMethodNotAllowed, models.APIError{Code: "method_not_allowed", Message: "method must be POST", RequestID: requestID(r)})
 		return
 	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		s.respondError(w, http.StatusUnsupportedMediaType, models.APIError{Code: "unsupported_media_type", Message: "content-type must be application/json", RequestID: requestID(r)})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 	var req models.ScanRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "invalid JSON body", Details: err.Error(), RequestID: requestID(r)})
+		s.respondErrorFromDecodeErr(w, r, err)
 		return
 	}
 	if req.Text == "" {
@@ -167,10 +178,15 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusMethodNotAllowed, models.APIError{Code: "method_not_allowed", Message: "method must be POST", RequestID: requestID(r)})
 		return
 	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		s.respondError(w, http.StatusUnsupportedMediaType, models.APIError{Code: "unsupported_media_type", Message: "content-type must be application/json", RequestID: requestID(r)})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 	var req models.DecideRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "invalid JSON body", Details: err.Error(), RequestID: requestID(r)})
+		s.respondErrorFromDecodeErr(w, r, err)
 		return
 	}
 	if req.Action.Type == "" {
@@ -258,9 +274,15 @@ func (s *Server) handleTransform(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusMethodNotAllowed, models.APIError{Code: "method_not_allowed", Message: "method must be POST", RequestID: requestID(r)})
 		return
 	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		s.respondError(w, http.StatusUnsupportedMediaType, models.APIError{Code: "unsupported_media_type", Message: "content-type must be application/json", RequestID: requestID(r)})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	var req models.TransformRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "invalid JSON body", Details: err.Error(), RequestID: requestID(r)})
+		s.respondErrorFromDecodeErr(w, r, err)
 		return
 	}
 	if req.Text == "" {
@@ -339,10 +361,15 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusMethodNotAllowed, models.APIError{Code: "method_not_allowed", Message: "method must be POST", RequestID: requestID(r)})
 		return
 	}
+	if !isJSONContentType(r.Header.Get("Content-Type")) {
+		s.respondError(w, http.StatusUnsupportedMediaType, models.APIError{Code: "unsupported_media_type", Message: "content-type must be application/json", RequestID: requestID(r)})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 	var req models.AnonymizeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "invalid JSON body", Details: err.Error(), RequestID: requestID(r)})
+		s.respondErrorFromDecodeErr(w, r, err)
 		return
 	}
 	if req.Text == "" {
@@ -537,4 +564,25 @@ func hashAnonymizeRequest(req models.AnonymizeRequest) (string, error) {
 	}
 	sum := sha256.Sum256(body)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+func isJSONContentType(value string) bool {
+	mediatype, _, err := mime.ParseMediaType(value)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(mediatype), "application/json")
+}
+
+func isRequestTooLarge(err error) bool {
+	var maxBytesErr *http.MaxBytesError
+	return errors.As(err, &maxBytesErr)
+}
+
+func (s *Server) respondErrorFromDecodeErr(w http.ResponseWriter, r *http.Request, err error) {
+	if isRequestTooLarge(err) {
+		s.respondError(w, http.StatusRequestEntityTooLarge, models.APIError{Code: "request_too_large", Message: "request body exceeds limit", RequestID: requestID(r)})
+		return
+	}
+	s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "invalid JSON body", Details: err.Error(), RequestID: requestID(r)})
 }

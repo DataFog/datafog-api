@@ -662,6 +662,34 @@ func TestValidateMethodAndBadInputs(t *testing.T) {
 		assertJSONError(t, anonymizeResp, http.StatusBadRequest, "invalid_request")
 	})
 
+	t.Run("invalid_content_type", func(t *testing.T) {
+		scanReq := httptest.NewRequest(http.MethodPost, "/v1/scan", bytes.NewBufferString(`{"text":"x"}`))
+		scanResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(scanResp, scanReq)
+		assertJSONError(t, scanResp, http.StatusUnsupportedMediaType, "unsupported_media_type")
+
+		decideReq := httptest.NewRequest(http.MethodPost, "/v1/decide", bytes.NewBufferString(`{"action":{"type":"file.read"},"text":"x"}`))
+		decideReq.Header.Set("Content-Type", "text/plain")
+		decideResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(decideResp, decideReq)
+		assertJSONError(t, decideResp, http.StatusUnsupportedMediaType, "unsupported_media_type")
+
+		transformReq := httptest.NewRequest(http.MethodPost, "/v1/transform", bytes.NewBufferString(`{"text":"x"}`))
+		transformReq.Header.Set("Content-Type", "text/plain; charset=utf-8")
+		transformResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(transformResp, transformReq)
+		assertJSONError(t, transformResp, http.StatusUnsupportedMediaType, "unsupported_media_type")
+	})
+
+	t.Run("request_too_large", func(t *testing.T) {
+		payload := `{"text":"` + strings.Repeat("x", int(maxRequestBodyBytes)+1) + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/scan", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		resp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		assertJSONError(t, resp, http.StatusRequestEntityTooLarge, "request_too_large")
+	})
+
 	t.Run("missing_receipt", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/v1/receipts/does-not-exist", nil)
 		resp := httptest.NewRecorder()

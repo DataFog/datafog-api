@@ -14,6 +14,9 @@
 
 All responses use JSON and include `Content-Type: application/json`.
 
+POST requests require `Content-Type: application/json` (charset may be supplied with standard media type syntax).
+A request body larger than 1 MiB (`1048576` bytes) is rejected with `request_too_large`.
+
 ### Standard error response
 
 ```json
@@ -33,6 +36,8 @@ All responses use JSON and include `Content-Type: application/json`.
 - `method_not_allowed` (405)
 - `not_found` (404)
 - `idempotency_conflict` (409)
+- `unsupported_media_type` (415)
+- `request_too_large` (413)
 - `encode_error` (500)
 - `hash_error` (500)
 - `receipt_error` (500)
