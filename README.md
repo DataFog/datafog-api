@@ -15,6 +15,12 @@ Default configuration:
 - `DATAFOG_POLICY_PATH`: `config/policy.json`
 - `DATAFOG_RECEIPT_PATH`: `datafog_receipts.jsonl`
 - `DATAFOG_ADDR`: `:8080`
+- `DATAFOG_READ_TIMEOUT`: `5s`
+- `DATAFOG_WRITE_TIMEOUT`: `10s`
+- `DATAFOG_READ_HEADER_TIMEOUT`: `2s`
+- `DATAFOG_IDLE_TIMEOUT`: `30s`
+
+Durations accept Go duration syntax (for example: `1s`, `500ms`, `2m`).
 
 ## HTTP API
 
