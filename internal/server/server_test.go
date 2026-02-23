@@ -208,6 +208,64 @@ func TestDecideAndReceiptFlow(t *testing.T) {
 	}
 }
 
+func TestDecideIdempotentReplay(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"action":{"type":"file.write","resource":"notes.txt"},"text":"contact jane@example.com","request_id":"r1","idempotency_key":"idem-1"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/decide", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+	var first models.DecideResponse
+	if err := json.NewDecoder(resp1.Body).Decode(&first); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	body2 := bytes.NewBufferString(`{"action":{"type":"file.write","resource":"notes.txt"},"text":"contact jane@example.com","request_id":"r2","idempotency_key":"idem-1"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/decide", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	if resp2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.Code)
+	}
+	var second models.DecideResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&second); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if first.ReceiptID == "" || second.ReceiptID == "" {
+		t.Fatalf("expected receipt ids")
+	}
+	if first.ReceiptID != second.ReceiptID {
+		t.Fatalf("expected same receipt for idempotent requests, got %q and %q", first.ReceiptID, second.ReceiptID)
+	}
+	if first.Decision != models.DecisionTransform || second.Decision != models.DecisionTransform {
+		t.Fatalf("expected transform decisions, got %q and %q", first.Decision, second.Decision)
+	}
+}
+
+func TestDecideIdempotencyConflict(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"action":{"type":"file.write","resource":"notes.txt"},"text":"contact jane@example.com","idempotency_key":"idem-conflict"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/decide", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+
+	body2 := bytes.NewBufferString(`{"action":{"type":"file.write","resource":"notes.txt"},"text":"contact different@example.com","idempotency_key":"idem-conflict"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/decide", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	assertJSONError(t, resp2, http.StatusConflict, "idempotency_conflict")
+}
+
 func TestValidateMethodAndBadInputs(t *testing.T) {
 	server := makeServer(t)
 	t.Run("method_not_allowed", func(t *testing.T) {

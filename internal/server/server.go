@@ -1,10 +1,13 @@
 package server
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/datafog/datafog-api/internal/models"
@@ -19,6 +22,13 @@ type Server struct {
 	store     *receipts.ReceiptStore
 	startedAt time.Time
 	logger    *log.Logger
+	mu        sync.Mutex
+	decisions map[string]idempotentDecision
+}
+
+type idempotentDecision struct {
+	requestHash string
+	response    models.DecideResponse
 }
 
 func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Logger) *Server {
@@ -30,6 +40,7 @@ func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Log
 		store:     store,
 		startedAt: time.Now().UTC(),
 		logger:    logger,
+		decisions: map[string]idempotentDecision{},
 	}
 }
 
@@ -112,6 +123,24 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "action.type is required", RequestID: requestID(r)})
 		return
 	}
+	if req.IdempotencyKey != "" {
+		reqHash, err := hashDecideRequest(req)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "unable to hash request payload", Details: err.Error(), RequestID: requestID(r)})
+			return
+		}
+		s.mu.Lock()
+		existing, ok := s.decisions[req.IdempotencyKey]
+		s.mu.Unlock()
+		if ok {
+			if existing.requestHash != reqHash {
+				s.respondError(w, http.StatusConflict, models.APIError{Code: "idempotency_conflict", Message: "different request payload for same idempotency_key", RequestID: requestID(r)})
+				return
+			}
+			s.respond(w, http.StatusOK, existing.response)
+			return
+		}
+	}
 
 	findings := req.Findings
 	if len(findings) == 0 && req.Text != "" {
@@ -137,6 +166,15 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		TransformPlan: result.TransformPlan,
 		Findings:      findings,
 		Reason:        result.Reason,
+	}
+	if req.IdempotencyKey != "" {
+		hash, _ := hashDecideRequest(req)
+		s.mu.Lock()
+		s.decisions[req.IdempotencyKey] = idempotentDecision{
+			requestHash: hash,
+			response:    res,
+		}
+		s.mu.Unlock()
 	}
 	s.respond(w, http.StatusOK, res)
 }
@@ -269,4 +307,16 @@ func requestID(r *http.Request) string {
 		return rid
 	}
 	return ""
+}
+
+func hashDecideRequest(req models.DecideRequest) (string, error) {
+	req.IdempotencyKey = ""
+	req.RequestID = ""
+	req.TraceID = ""
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
 }
