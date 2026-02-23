@@ -127,6 +127,7 @@ func Evaluate(policy models.Policy, ctx DecisionContext) DecisionResult {
 	transformFound := false
 	transformWithRedaction := false
 	denyReason := ""
+	denyMatched := false
 
 	matched := false
 	for _, rule := range rules {
@@ -144,14 +145,9 @@ func Evaluate(policy models.Policy, ctx DecisionContext) DecisionResult {
 
 		switch rule.Effect {
 		case models.DecisionDeny:
+			denyMatched = true
 			if denyReason == "" {
 				denyReason = rule.Description
-			}
-			return DecisionResult{
-				Decision:      models.DecisionDeny,
-				MatchedRules:  matchIDs,
-				TransformPlan: nil,
-				Reason:        denyReason,
 			}
 		case models.DecisionTransform:
 			transformFound = true
@@ -163,6 +159,14 @@ func Evaluate(policy models.Policy, ctx DecisionContext) DecisionResult {
 		}
 	}
 
+	if denyMatched {
+		return DecisionResult{
+			Decision:      models.DecisionDeny,
+			MatchedRules:  matchIDs,
+			TransformPlan: nil,
+			Reason:        denyReason,
+		}
+	}
 	if transformFound {
 		if len(transformPlan) == 0 {
 			transformPlan = defaultEntityTransforms

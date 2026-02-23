@@ -92,6 +92,84 @@ func TestEvaluateDefaultDenyForUnknownAction(t *testing.T) {
 	}
 }
 
+func TestEvaluateDenylRuleAlwaysWins(t *testing.T) {
+	policy := models.Policy{
+		PolicyID:      "mvp",
+		PolicyVersion: "v1",
+		Rules: []models.Rule{
+			{
+				ID:       "transform-low-priority",
+				Priority: 90,
+				Effect:   models.DecisionTransform,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"file.write"},
+				},
+				EntityRequirements: []string{"email"},
+			},
+			{
+				ID:       "deny-low-priority",
+				Priority: 10,
+				Effect:   models.DecisionDeny,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"file.write"},
+				},
+				EntityRequirements: []string{"api_key"},
+			},
+		},
+	}
+	result := Evaluate(policy, DecisionContext{
+		Action: models.ActionMeta{Type: "file.write", Resource: "notes.txt"},
+		Findings: []models.ScanFinding{
+			{EntityType: "email", Value: "a@b.com", Start: 0, End: 7, Confidence: .98},
+			{EntityType: "api_key", Value: "ABCD1234EFGH5678", Start: 9, End: 25, Confidence: .98},
+		},
+	})
+	if result.Decision != models.DecisionDeny {
+		t.Fatalf("expected deny to take precedence, got %s", result.Decision)
+	}
+	if len(result.MatchedRules) != 2 {
+		t.Fatalf("expected 2 matched rules, got %v", result.MatchedRules)
+	}
+}
+
+func TestEvaluateTransformBeatsRedaction(t *testing.T) {
+	policy := models.Policy{
+		PolicyID:      "mvp",
+		PolicyVersion: "v1",
+		Rules: []models.Rule{
+			{
+				ID:       "redact-mid-priority",
+				Priority: 50,
+				Effect:   models.DecisionAllowWithRedaction,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"file.write"},
+				},
+			},
+			{
+				ID:       "transform-high-priority",
+				Priority: 40,
+				Effect:   models.DecisionTransform,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"file.write"},
+				},
+				EntityRequirements: []string{"email"},
+			},
+		},
+	}
+	result := Evaluate(policy, DecisionContext{
+		Action: models.ActionMeta{Type: "file.write", Resource: "notes.txt"},
+		Findings: []models.ScanFinding{
+			{EntityType: "email", Value: "a@b.com", Start: 0, End: 7, Confidence: .98},
+		},
+	})
+	if result.Decision != models.DecisionTransform {
+		t.Fatalf("expected transform to beat allow_with_redaction, got %s", result.Decision)
+	}
+	if len(result.TransformPlan) == 0 {
+		t.Fatalf("expected transform plan for transform decision")
+	}
+}
+
 func TestValidatePolicyRejectsUnknownEffect(t *testing.T) {
 	policy := basePolicy()
 	policy.Rules[0].Effect = models.Decision("unsupported")
@@ -152,7 +230,7 @@ func TestEvaluateGoldenPolicyVectors(t *testing.T) {
 			Action:           models.ActionMeta{Type: "shell.exec", Resource: "curl"},
 			Findings:         []models.ScanFinding{{EntityType: "api_key", Value: "ABCD1234EFGH5678", Start: 0, End: 16, Confidence: 0.99}},
 			ExpectedDecision: models.DecisionDeny,
-			ExpectedRules:    []string{"deny-api-key-shell"},
+			ExpectedRules:    []string{"deny-api-key-shell", "allow-safe"},
 		},
 		{
 			Name:             "default deny for unmatched",
