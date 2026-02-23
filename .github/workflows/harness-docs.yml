@@ -1,0 +1,30 @@
+name: Harness Docs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  docs_lint:
+    name: Docs Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Lint harness docs
+        run: |
+          bash scripts/ci/he-docs-lint.sh
+          bash scripts/ci/he-specs-lint.sh
+          bash scripts/ci/he-plans-lint.sh
+          bash scripts/ci/he-spikes-lint.sh
+
+  docs_drift:
+    name: Docs Drift Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Enforce doc updates on relevant changes
+        run: bash scripts/ci/he-docs-drift.sh

@@ -1,0 +1,123 @@
+{
+  "required_docs": [
+    "AGENTS.md",
+    "docs/PLANS.md",
+    "docs/DOMAIN_DOCS.md"
+  ],
+  "expected_runbooks": [
+    "docs/runbooks/update-agents-md.md",
+    "docs/runbooks/update-domain-docs.md",
+    "docs/runbooks/code-review.md",
+    "docs/runbooks/review-findings.md",
+    "docs/runbooks/address-review-findings.md",
+    "docs/runbooks/validate-current-state.md",
+    "docs/runbooks/reproduce-bug.md",
+    "docs/runbooks/pull-request.md",
+    "docs/runbooks/respond-to-feedback.md",
+    "docs/runbooks/verify-release.md",
+    "docs/runbooks/record-evidence.md",
+    "docs/runbooks/ci-failures.md",
+    "docs/runbooks/merge-change.md"
+  ],
+  "domain_docs": [
+    "docs/DESIGN.md",
+    "docs/DATA.md",
+    "docs/FRONTEND.md",
+    "docs/PRODUCT_SENSE.md",
+    "docs/RELIABILITY.md",
+    "docs/SECURITY.md",
+    "docs/OBSERVABILITY.md",
+    "docs/design-docs/core-beliefs.md"
+  ],
+  "required_headings": {
+    "docs/SECURITY.md": [
+      "## Threat Model",
+      "## Auth Model",
+      "## Data Sensitivity",
+      "## Compliance",
+      "## Controls"
+    ],
+    "docs/RELIABILITY.md": [
+      "## Reliability Goals",
+      "## Failure Modes",
+      "## Monitoring",
+      "## Operational Guardrails"
+    ],
+    "docs/FRONTEND.md": [
+      "## Stack",
+      "## Conventions",
+      "## Component Architecture",
+      "## Performance",
+      "## Accessibility"
+    ],
+    "docs/DESIGN.md": [
+      "## Design Principles",
+      "## Visual Direction",
+      "## Interaction Standards"
+    ],
+    "docs/PRODUCT_SENSE.md": [
+      "## Target Users",
+      "## Key Outcomes",
+      "## Decision Heuristics",
+      "## Quality Criteria"
+    ],
+    "docs/DATA.md": [
+      "## Data Model",
+      "## Migrations",
+      "## Backfills And Data Fixes",
+      "## Integrity And Consistency",
+      "## Sensitive Data Notes"
+    ],
+    "docs/OBSERVABILITY.md": [
+      "## Logging Strategy",
+      "## Metrics",
+      "## Traces",
+      "## Health Checks",
+      "## Agent Access"
+    ]
+  },
+  "artifact_placeholder_patterns": [
+    "<slug>",
+    "<YYYY-",
+    "<title>"
+  ],
+  "lint_completed_plans": true,
+  "required_spec_frontmatter_keys": [
+    "slug",
+    "status",
+    "date",
+    "owner",
+    "plan_mode",
+    "spike_recommended",
+    "priority"
+  ],
+  "required_plan_frontmatter_keys": [
+    "slug",
+    "status",
+    "phase",
+    "plan_mode",
+    "priority",
+    "owner"
+  ],
+  "required_spike_frontmatter_keys": [
+    "slug",
+    "status",
+    "date",
+    "owner",
+    "timebox"
+  ],
+  "drift_rules": [
+    {
+      "regex": "(^auth/|/auth/|^middleware/|/middleware/|(^|/)security/|(^|/)permissions/)",
+      "doc": "docs/SECURITY.md"
+    },
+    {
+      "regex": "(^infra/|^ops/|^deploy/|^terraform/|^k8s/|^helm/|(^|/)monitoring/|(^|/)alerts/)",
+      "doc": "docs/RELIABILITY.md"
+    },
+    {
+      "regex": "(^package\\\\.json$|^pnpm-lock\\\\.yaml$|^yarn\\\\.lock$|^bun\\\\.lockb$|^tsconfig\\\\.json$|^vite\\\\.config\\\\.|^next\\\\.config\\\\.)",
+      "doc": "docs/FRONTEND.md"
+    }
+  ]
+}
