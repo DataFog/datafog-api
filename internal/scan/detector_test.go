@@ -126,3 +126,17 @@ func TestScanTextCorpusIsDeterministicWhenReloadedFromJSON(t *testing.T) {
 		t.Fatalf("expected deterministic results, got %+v and %+v", first, second)
 	}
 }
+
+func TestScanTextNoPanicOnMalformedUTF8(t *testing.T) {
+	malformed := string([]byte("contact "))
+	malformed += string([]byte{0xff, 0xfe})
+	malformed += " jane@example.com"
+
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			t.Fatalf("ScanText panicked on malformed UTF-8: %v", recovered)
+		}
+	}()
+
+	_ = ScanText(malformed, nil)
+}

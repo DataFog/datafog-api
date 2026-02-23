@@ -20,6 +20,11 @@ Default configuration:
 
 All examples use `localhost:8080`.
 
+Canonical contract:
+
+- See `docs/contracts/datafog-api-contract.md` for endpoint schemas, error codes, and idempotency semantics.
+- See `docs/generated/api-schema.md` for registered routes.
+
 ### `GET /health`
 
 ```sh
