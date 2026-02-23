@@ -16,6 +16,8 @@ import (
 	"github.com/datafog/datafog-api/internal/policy"
 )
 
+const maxReceiptLineBytes = 1024 * 1024
+
 type ReceiptStore struct {
 	mu       sync.RWMutex
 	filePath string
@@ -90,6 +92,9 @@ func (s *ReceiptStore) Save(receipt models.Receipt) (models.Receipt, error) {
 	if _, err := f.Write(appendWithLine(data)); err != nil {
 		return models.Receipt{}, err
 	}
+	if err := f.Sync(); err != nil {
+		return models.Receipt{}, err
+	}
 
 	s.receipts[receipt.ReceiptID] = receipt
 	return receipt, nil
@@ -103,6 +108,7 @@ func (s *ReceiptStore) loadExistingReceipts() error {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), maxReceiptLineBytes)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {

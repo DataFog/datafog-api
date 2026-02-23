@@ -3,6 +3,7 @@ package receipts
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/datafog/datafog-api/internal/models"
@@ -68,5 +69,56 @@ func TestReceiptStoreLoadsExistingReceipts(t *testing.T) {
 	}
 	if got.Decision != models.DecisionDeny {
 		t.Fatalf("unexpected decision: %s", got.Decision)
+	}
+}
+
+func TestReceiptStoreRejectsCorruptReceiptLine(t *testing.T) {
+	path := t.TempDir() + "/receipts.jsonl"
+	if err := os.WriteFile(path, []byte("{\n"), 0o644); err != nil {
+		t.Fatalf("seed file write failed: %v", err)
+	}
+
+	if _, err := NewReceiptStore(path); err == nil {
+		t.Fatalf("expected receipt load failure on corrupt line")
+	}
+}
+
+func TestReceiptStoreLoadsLargeReceiptLine(t *testing.T) {
+	path := t.TempDir() + "/receipts.jsonl"
+	existing := models.Receipt{
+		ReceiptID: "receipt-large",
+		PolicyID:  "policy-1",
+		Findings: []models.ScanFinding{
+			{
+				EntityType: "email",
+				Value:      strings.Repeat("x", 600*1024),
+				Start:      0,
+				End:        600 * 1024,
+				Confidence: 0.9,
+			},
+		},
+		PolicyVersion: "v1",
+		RequestID:     "r1",
+		Decision:      models.DecisionAllow,
+		MatchedRules:  []string{"seed"},
+	}
+	data, err := json.Marshal(existing)
+	if err != nil {
+		t.Fatalf("marshal failed: %v", err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		t.Fatalf("seed file write failed: %v", err)
+	}
+
+	store, err := NewReceiptStore(path)
+	if err != nil {
+		t.Fatalf("new store failed: %v", err)
+	}
+	got, ok := store.Get("receipt-large")
+	if !ok {
+		t.Fatalf("expected to load large receipt")
+	}
+	if got.ReceiptID != "receipt-large" {
+		t.Fatalf("expected loaded receipt id receipt-large, got %q", got.ReceiptID)
 	}
 }
