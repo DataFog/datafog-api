@@ -28,4 +28,5 @@ db.sqlite3
 
 # ignore local datafog-python
 datafog-python/
+datafog_receipts.jsonl
 *.coverage

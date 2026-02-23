@@ -1,5 +1,4 @@
-# This workflow will install Python dependencies, run tests and lint with a single version of Python
-# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+# Go-based build + test pipeline for datafog-api
 
 name: Main CICD datafog-api app
 
@@ -14,21 +13,24 @@ permissions:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
-    - name: Set up Python 3.11
-      uses: actions/setup-python@v3
+    - name: Set up Go
+      uses: actions/setup-go@v5
       with:
-        python-version: "3.11"
-    - name: Install dependencies
+        go-version: "1.22"
+    - name: Run gofmt check
       run: |
-        python -m pip install --upgrade pip
-        pip install -r app/requirements-dev.txt
-    - name: Test with pytest with coverage minimum
-      run: |
-        cd app && pytest
-    - name: Build the Docker image
+        test -z "$(gofmt -l cmd internal | tee /tmp/gofmt-diff.txt)" || {
+          echo "Run gofmt on:"
+          cat /tmp/gofmt-diff.txt
+          exit 1
+        }
+    - name: Run tests
+      run: go test ./...
+    - name: Lint (go vet)
+      run: go vet ./...
+    - name: Build container image
       run: docker build . --file Dockerfile --tag datafog-api:$(date +%s)

@@ -1,20 +1,20 @@
-FROM ubuntu:22.04
-ENV PYTHONUNBUFFERED=1
-ENV DEBIAN_FRONTEND=noninteractive
+FROM golang:1.22 AS build
 
-EXPOSE 8000
+WORKDIR /workspace
 
-RUN apt-get update && apt-get install -y \
-    vim \
-    git \
-    python3-pip \
-    python3.11 \
-    wget
+COPY go.mod ./
+COPY cmd ./cmd
+COPY internal ./internal
+COPY config ./config
 
-ADD app /root/app
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/datafog-api ./cmd/datafog-api
 
-RUN python3.11 -m pip install -r /root/app/requirements.txt
+FROM gcr.io/distroless/base-debian11
 
+WORKDIR /app
+COPY --from=build /out/datafog-api /usr/local/bin/datafog-api
+COPY --from=build /workspace/config/policy.json /app/config/policy.json
 
-WORKDIR /root/app
-ENTRYPOINT ["python3.11", "-m", "uvicorn", "--host=0.0.0.0","main:app"]
+EXPOSE 8080
+
+ENTRYPOINT ["/usr/local/bin/datafog-api"]
