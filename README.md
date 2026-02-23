@@ -150,9 +150,10 @@ Actions that resolve to `transform` or `deny` are blocked until the caller appli
 Supported actions:
 
 - `shell` (command + args)
-- `run --adapter <name> --target <binary> <args...>` (generic adapter path)
+- `run [--adapter <name>] --target <binary> <args...>` (adapter name inferred from binary path when omitted)
 - `read-file <path>`
 - `write-file <path> <text>`
+- `adapters list` (show built-in adapter families used by shim policy metadata)
 - `hooks install <command>` (PATH interception with generated wrapper)
 - `hooks list`
 - `hooks uninstall <command>`

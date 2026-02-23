@@ -159,8 +159,8 @@ func TestInstallListAndUninstallShim(t *testing.T) {
 	if !managed {
 		t.Fatal("expected managed shim")
 	}
-	if found.Adapter != "git" {
-		t.Fatalf("expected adapter git, got %q", found.Adapter)
+	if found.Adapter != "vcs" {
+		t.Fatalf("expected adapter vcs, got %q", found.Adapter)
 	}
 
 	list, err := listManagedShims(shimDir)
@@ -182,5 +182,50 @@ func TestInstallListAndUninstallShim(t *testing.T) {
 
 	if _, statErr := os.Stat(shimPath); !os.IsNotExist(statErr) {
 		t.Fatalf("expected shim removed")
+	}
+}
+
+func TestAdapterResolution(t *testing.T) {
+	if adapter := resolveAdapter("", "/usr/bin/git"); adapter != "vcs" {
+		t.Fatalf("expected git to resolve to vcs, got %q", adapter)
+	}
+	if adapter := resolveAdapter("", "/usr/local/bin/git"); adapter != "vcs" {
+		t.Fatalf("expected absolute git path to resolve to vcs, got %q", adapter)
+	}
+	if adapter := resolveAdapter("", "/usr/bin/docker"); adapter != "container" {
+		t.Fatalf("expected docker to resolve to container, got %q", adapter)
+	}
+	if adapter := resolveAdapter("  Git  ", ""); adapter != "vcs" {
+		t.Fatalf("expected explicit git alias to resolve to vcs, got %q", adapter)
+	}
+	if adapter := resolveAdapter("  gh  ", ""); adapter != "vcs" {
+		t.Fatalf("expected explicit gh alias to resolve to vcs, got %q", adapter)
+	}
+	if adapter := resolveAdapter("  gogcli  ", ""); adapter != "vcs" {
+		t.Fatalf("expected explicit gogcli alias to resolve to vcs, got %q", adapter)
+	}
+	if adapter := resolveAdapter("customTool", "/usr/bin/git"); adapter != "customtool" {
+		t.Fatalf("expected unknown adapter to normalize only, got %q", adapter)
+	}
+	if adapter := resolveAdapter("", "/usr/bin/customcommand"); adapter != "customcommand" {
+		t.Fatalf("expected unknown command path to normalize only, got %q", adapter)
+	}
+}
+
+func TestKnownAdaptersAreDeterministic(t *testing.T) {
+	adapters := knownAdapters()
+	if len(adapters) == 0 {
+		t.Fatalf("expected known adapters list to be populated")
+	}
+
+	foundGit := false
+	for _, adapter := range adapters {
+		if adapter.Canonical == "vcs" {
+			foundGit = true
+			break
+		}
+	}
+	if !foundGit {
+		t.Fatalf("expected vcs canonical adapter")
 	}
 }

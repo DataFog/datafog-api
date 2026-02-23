@@ -72,7 +72,7 @@ func run(argv []string) error {
 
 	args := flags.Args()
 	if len(args) == 0 {
-		return fmt.Errorf("missing command: hooks|shell|run|read-file|write-file\n\n%s", usage())
+		return fmt.Errorf("missing command: adapters|hooks|shell|run|read-file|write-file\n\n%s", usage())
 	}
 
 	ctx := context.Background()
@@ -88,6 +88,8 @@ func run(argv []string) error {
 		return runCommandAdapter(ctx, cfg, args[1:])
 	case "hooks":
 		return runHooks(ctx, cfg, args[1:])
+	case "adapters":
+		return runAdapters(ctx, args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", cmd, usage())
 	}
@@ -233,9 +235,6 @@ func runCommandAdapter(ctx context.Context, cfg shimRuntimeConfig, args []string
 		return err
 	}
 
-	if strings.TrimSpace(*adapter) == "" {
-		return fmt.Errorf("run requires --adapter")
-	}
 	runArgs := flags.Args()
 	targetPath := strings.TrimSpace(*target)
 	if targetPath == "" {
@@ -249,8 +248,13 @@ func runCommandAdapter(ctx context.Context, cfg shimRuntimeConfig, args []string
 		return fmt.Errorf("run target is required")
 	}
 
+	adapterName := resolveAdapter(*adapter, targetPath)
+	if adapterName == "" {
+		return fmt.Errorf("run requires --adapter or an identifiable target command")
+	}
+
 	gate := newGate(cfg)
-	decision, output, err := gate.ExecuteCommand(ctx, *adapter, targetPath, runArgs, "", nil, cfg.sensitive)
+	decision, output, err := gate.ExecuteCommand(ctx, adapterName, targetPath, runArgs, "", nil, cfg.sensitive)
 	if err != nil {
 		return err
 	}
@@ -315,9 +319,9 @@ func runHooksInstall(cfg shimRuntimeConfig, argv []string) error {
 	if command == "" {
 		return fmt.Errorf("command name is required")
 	}
-	adapterName := strings.TrimSpace(*adapter)
+	adapterName := resolveAdapter(*adapter, command)
 	if adapterName == "" {
-		adapterName = command
+		return fmt.Errorf("unable to infer adapter name")
 	}
 
 	targetPath := strings.TrimSpace(*target)
@@ -370,6 +374,19 @@ func runHooksList(cfg shimRuntimeConfig, argv []string) error {
 	}
 	for _, m := range shims {
 		fmt.Printf("%s -> target=%s adapter=%s mode=%s policy=%s\n", m.Command, m.Target, m.Adapter, m.Mode, m.PolicyURL)
+	}
+	return nil
+}
+
+func runAdapters(_ context.Context, args []string) error {
+	if len(args) != 1 || args[0] != "list" {
+		return fmt.Errorf("adapters command currently supports: list")
+	}
+
+	for _, adapter := range knownAdapters() {
+		fmt.Printf("%s\n", adapter.Canonical)
+		fmt.Printf("  aliases: %s\n", strings.Join(adapter.Aliases, ", "))
+		fmt.Printf("  description: %s\n\n", adapter.Description)
 	}
 	return nil
 }
@@ -448,6 +465,7 @@ func resolveTargetBinary(raw string) (string, error) {
 }
 
 func installShimScript(shimBinary string, cfg shimRuntimeConfig, command, adapter, target string, force bool) (string, error) {
+	adapter = resolveAdapter(adapter, command)
 	cfg.mode = coalesce(cfg.mode, string(shim.ModeEnforced))
 	cfg.shimDir = coalesce(cfg.shimDir, defaultShimDir())
 	shimPath := shimScriptPath(cfg.shimDir, command)
@@ -638,9 +656,10 @@ func usage() string {
 	text := strings.TrimSpace(`
 usage:
   datafog-shim --policy-url=http://localhost:8080 shell <command> [args...]
-  datafog-shim --policy-url=http://localhost:8080 run --adapter <name> --target <path> [args...]
+  datafog-shim --policy-url=http://localhost:8080 run [--adapter <name>] --target <path> [args...]
   datafog-shim --policy-url=http://localhost:8080 read-file <path>
   datafog-shim --policy-url=http://localhost:8080 write-file <path> <text>
+  datafog-shim adapters list
   datafog-shim hooks install [--adapter <name>] [--target <path>] <command>
   datafog-shim hooks list
   datafog-shim hooks uninstall <command>
