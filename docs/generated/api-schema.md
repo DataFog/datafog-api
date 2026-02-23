@@ -13,6 +13,7 @@ Discovered from `internal/server/server.go` route registration.
 - `POST /v1/transform`
 - `POST /v1/anonymize`
 - `GET /v1/receipts/{id}`
+- `GET /metrics`
 
 ## Route behavior
 

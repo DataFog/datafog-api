@@ -73,6 +73,37 @@ Returns policy identity.
 }
 ```
 
+### `GET /metrics`
+
+Returns coarse-grained service telemetry for operations and routing.
+
+```json
+{
+  "total_requests": 42,
+  "error_requests": 3,
+  "by_status": {
+    "200": 30,
+    "400": 1,
+    "404": 2,
+    "500": 0
+  },
+  "by_path": {
+    "/health": 20,
+    "/v1/scan": 5,
+    "/v1/decide": 3,
+    "/_not_found": 3
+  },
+  "by_method": {
+    "GET": 14,
+    "POST": 28
+  },
+  "started_at": "RFC3339 timestamp",
+  "uptime_seconds": 12.34
+}
+```
+
+`by_status`, `by_path`, and `by_method` include counters for completed requests observed before each `/metrics` call. `/metrics` request details appear on subsequent polling.
+
 ### `POST /v1/scan`
 
 Scans free text and returns deterministic findings.

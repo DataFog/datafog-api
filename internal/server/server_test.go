@@ -753,6 +753,86 @@ func TestValidateMethodAndBadInputs(t *testing.T) {
 	})
 }
 
+func TestMetricsEndpoint(t *testing.T) {
+	server := makeServer(t)
+
+	healthReq := httptest.NewRequest(http.MethodGet, "/health", nil)
+	healthResp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(healthResp, healthReq)
+	if healthResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for health, got %d", healthResp.Code)
+	}
+
+	scanReq := httptest.NewRequest(http.MethodPost, "/v1/scan", strings.NewReader(`{"text":"contact jane@example.com"}`))
+	scanReq.Header.Set("Content-Type", "application/json")
+	scanResp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(scanResp, scanReq)
+	if scanResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for scan, got %d", scanResp.Code)
+	}
+
+	notFoundReq := httptest.NewRequest(http.MethodGet, "/v1/does-not-exist", nil)
+	notFoundResp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(notFoundResp, notFoundReq)
+	if notFoundResp.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for unknown route, got %d", notFoundResp.Code)
+	}
+
+	metricsReq := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	metricsResp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(metricsResp, metricsReq)
+	if metricsResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 for metrics, got %d", metricsResp.Code)
+	}
+	assertJSONContentType(t, metricsResp)
+
+	var got metricsResponse
+	if err := json.NewDecoder(metricsResp.Body).Decode(&got); err != nil {
+		t.Fatalf("decode metrics failed: %v", err)
+	}
+	if got.TotalRequests != 3 {
+		t.Fatalf("expected 3 total requests, got %d", got.TotalRequests)
+	}
+	if got.ErrorRequests != 1 {
+		t.Fatalf("expected 1 error request, got %d", got.ErrorRequests)
+	}
+	if got.ByMethod["GET"] != 2 {
+		t.Fatalf("expected 2 GET requests, got %d", got.ByMethod["GET"])
+	}
+	if got.ByMethod["POST"] != 1 {
+		t.Fatalf("expected 1 POST request, got %d", got.ByMethod["POST"])
+	}
+	if got.ByStatus["200"] != 2 {
+		t.Fatalf("expected 2 status 200 requests, got %d", got.ByStatus["200"])
+	}
+	if got.ByStatus["404"] != 1 {
+		t.Fatalf("expected 1 status 404 request, got %d", got.ByStatus["404"])
+	}
+	if got.ByPath["/health"] != 1 {
+		t.Fatalf("expected /health to be tracked once, got %d", got.ByPath["/health"])
+	}
+	if got.ByPath["/v1/scan"] != 1 {
+		t.Fatalf("expected /v1/scan to be tracked once, got %d", got.ByPath["/v1/scan"])
+	}
+	if got.ByPath["/_not_found"] != 1 {
+		t.Fatalf("expected /_not_found to be tracked once, got %d", got.ByPath["/_not_found"])
+	}
+	if _, err := time.Parse(time.RFC3339, got.StartedAt); err != nil {
+		t.Fatalf("expected started_at to be RFC3339, got %q", got.StartedAt)
+	}
+	if got.UptimeSeconds < 0 {
+		t.Fatalf("expected non-negative uptime, got %f", got.UptimeSeconds)
+	}
+}
+
+func TestMetricsMethodNotAllowed(t *testing.T) {
+	server := makeServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/metrics", nil)
+	resp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	assertJSONError(t, resp, http.StatusMethodNotAllowed, "method_not_allowed")
+}
+
 func TestInvalidJSONHandling(t *testing.T) {
 	server := makeServer(t)
 

@@ -11,6 +11,7 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -28,10 +29,16 @@ type Server struct {
 	startedAt  time.Time
 	logger     *log.Logger
 	mu         sync.Mutex
+	statsMu    sync.Mutex
 	decisions  map[string]idempotentDecision
 	scans      map[string]idempotentCachedResponse
 	transforms map[string]idempotentCachedResponse
 	anonymizes map[string]idempotentCachedResponse
+	totalCount int64
+	errorCount int64
+	statusHits map[int]int64
+	pathHits   map[string]int64
+	methodHits map[string]int64
 }
 
 type requestIDContextKey struct{}
@@ -68,6 +75,16 @@ type idempotentCachedResponse struct {
 	status      int
 }
 
+type metricsResponse struct {
+	TotalRequests int64            `json:"total_requests"`
+	ErrorRequests int64            `json:"error_requests"`
+	ByStatus      map[string]int64 `json:"by_status"`
+	ByPath        map[string]int64 `json:"by_path"`
+	ByMethod      map[string]int64 `json:"by_method"`
+	StartedAt     string           `json:"started_at"`
+	UptimeSeconds float64          `json:"uptime_seconds"`
+}
+
 func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Logger) *Server {
 	if logger == nil {
 		logger = log.Default()
@@ -81,6 +98,9 @@ func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Log
 		scans:      map[string]idempotentCachedResponse{},
 		transforms: map[string]idempotentCachedResponse{},
 		anonymizes: map[string]idempotentCachedResponse{},
+		statusHits: map[int]int64{},
+		pathHits:   map[string]int64{},
+		methodHits: map[string]int64{},
 	}
 }
 
@@ -93,6 +113,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/transform", s.handleTransform)
 	mux.HandleFunc("/v1/anonymize", s.handleAnonymize)
 	mux.HandleFunc("/v1/receipts/", s.handleReceipt)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reqID := requestID(r)
 		if reqID == "" {
@@ -103,26 +124,49 @@ func (s *Server) Handler() http.Handler {
 
 		responseWriter := &responseStatusWriter{ResponseWriter: w}
 		startedAt := time.Now()
+		handler, pattern := mux.Handler(r)
 		defer func() {
 			if rec := recover(); rec != nil {
+				responseWriter.status = http.StatusInternalServerError
 				s.logger.Printf("request panic request_id=%s method=%s path=%s err=%v", reqID, r.Method, r.URL.Path, rec)
-				if responseWriter.status == 0 {
-					s.respondError(responseWriter, http.StatusInternalServerError, models.APIError{Code: "internal_error", Message: "internal server error", RequestID: reqID})
-				}
+				s.respondError(responseWriter, http.StatusInternalServerError, models.APIError{Code: "internal_error", Message: "internal server error", RequestID: reqID})
 			}
 			if responseWriter.status == 0 {
 				responseWriter.status = http.StatusOK
 			}
+			if pattern == "" {
+				s.recordRequestMetrics(r.Method, "/_not_found", responseWriter.status)
+			} else {
+				s.recordRequestMetrics(r.Method, canonicalizedRoute(pattern, r.URL.Path), responseWriter.status)
+			}
 			s.logger.Printf("request complete request_id=%s method=%s path=%s status=%d latency_ms=%d", reqID, r.Method, r.URL.Path, responseWriter.status, time.Since(startedAt).Milliseconds())
 		}()
 
-		handler, pattern := mux.Handler(r)
 		if pattern == "" {
 			s.respondError(responseWriter, http.StatusNotFound, models.APIError{Code: "not_found", Message: "endpoint not found", RequestID: reqID})
 			return
 		}
 		handler.ServeHTTP(responseWriter, r)
 	})
+}
+
+func canonicalizedRoute(pattern string, path string) string {
+	if strings.HasSuffix(pattern, "/") && strings.HasPrefix(path, "/v1/receipts/") {
+		return "/v1/receipts/{id}"
+	}
+	return pattern
+}
+
+func (s *Server) recordRequestMetrics(method string, route string, status int) {
+	s.statsMu.Lock()
+	defer s.statsMu.Unlock()
+	s.totalCount++
+	s.methodHits[method]++
+	s.pathHits[route]++
+	s.statusHits[status]++
+	if status >= 400 {
+		s.errorCount++
+	}
 }
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -505,6 +549,44 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respond(w, http.StatusOK, res)
+}
+
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, http.StatusMethodNotAllowed, models.APIError{Code: "method_not_allowed", Message: "method must be GET", RequestID: requestID(r)})
+		return
+	}
+	metrics := s.snapshotMetrics()
+	s.respond(w, http.StatusOK, metrics)
+}
+
+func (s *Server) snapshotMetrics() metricsResponse {
+	s.statsMu.Lock()
+	defer s.statsMu.Unlock()
+	byStatus := map[string]int64{}
+	for status, count := range s.statusHits {
+		byStatus[strconv.Itoa(status)] = count
+	}
+
+	byPath := map[string]int64{}
+	for path, count := range s.pathHits {
+		byPath[path] = count
+	}
+
+	byMethod := map[string]int64{}
+	for method, count := range s.methodHits {
+		byMethod[method] = count
+	}
+
+	return metricsResponse{
+		TotalRequests: s.totalCount,
+		ErrorRequests: s.errorCount,
+		ByStatus:      byStatus,
+		ByPath:        byPath,
+		ByMethod:      byMethod,
+		StartedAt:     s.startedAt.Format(time.RFC3339),
+		UptimeSeconds: time.Since(s.startedAt).Seconds(),
+	}
 }
 
 func (s *Server) handleReceipt(w http.ResponseWriter, r *http.Request) {
