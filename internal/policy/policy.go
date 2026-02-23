@@ -119,7 +119,7 @@ func Evaluate(policy models.Policy, ctx DecisionContext) DecisionResult {
 
 	hasFindings := map[string]struct{}{}
 	for _, f := range ctx.Findings {
-		hasFindings[f.EntityType] = struct{}{}
+		hasFindings[strings.ToLower(f.EntityType)] = struct{}{}
 	}
 
 	matchIDs := []string{}
@@ -231,10 +231,11 @@ func matchesField(allowed []string, value string) bool {
 
 func hasRequiredEntities(reqs []string, found map[string]struct{}) bool {
 	for _, req := range reqs {
-		if _, ok := defaultEntityTypes[strings.ToLower(req)]; !ok {
+		reqName := strings.ToLower(req)
+		if _, ok := defaultEntityTypes[reqName]; !ok {
 			continue
 		}
-		if _, ok := found[req]; !ok {
+		if _, ok := found[reqName]; !ok {
 			return false
 		}
 	}
