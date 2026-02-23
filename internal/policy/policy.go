@@ -87,6 +87,16 @@ func ValidatePolicy(policy models.Policy) error {
 				errors = append(errors, fmt.Sprintf("rule %s has empty resource_prefix condition", ruleID))
 			}
 		}
+		for _, command := range rule.Match.Commands {
+			if strings.TrimSpace(command) == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has empty command condition", ruleID))
+			}
+		}
+		for _, arg := range rule.Match.Args {
+			if strings.TrimSpace(arg) == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has empty arg condition", ruleID))
+			}
+		}
 		for _, requirement := range rule.EntityRequirements {
 			reqName := strings.ToLower(strings.TrimSpace(requirement))
 			if reqName == "" {
@@ -190,7 +200,7 @@ func Evaluate(policy models.Policy, ctx DecisionContext) DecisionResult {
 		if _, ok := RequiredDecisionInputs[rule.Effect]; !ok {
 			continue
 		}
-		if !matchAction(rule.Match, ctx.Action) {
+		if !matchAction(rule.Match, rule.RequireSensitiveOnly, ctx.Action) {
 			continue
 		}
 		if !hasRequiredEntities(rule.EntityRequirements, hasFindings) {
@@ -256,11 +266,20 @@ func Evaluate(policy models.Policy, ctx DecisionContext) DecisionResult {
 	}
 }
 
-func matchAction(match models.MatchCriteria, action models.ActionMeta) bool {
+func matchAction(match models.MatchCriteria, requireSensitiveOnly bool, action models.ActionMeta) bool {
 	if !matchesField(match.ActionTypes, action.Type) {
 		return false
 	}
 	if !matchesField(match.Tools, action.Tool) {
+		return false
+	}
+	if !matchesField(match.Commands, action.Command) {
+		return false
+	}
+	if !matchesArgs(match.Args, action.Args) {
+		return false
+	}
+	if requireSensitiveOnly && !action.Sensitive {
 		return false
 	}
 	if len(match.ResourcePrefix) > 0 && action.Resource == "" {
@@ -273,6 +292,29 @@ func matchAction(match models.MatchCriteria, action models.ActionMeta) bool {
 	}
 	if len(match.ResourcePrefix) > 0 {
 		return false
+	}
+	return true
+}
+
+func matchesArgs(required []string, args []string) bool {
+	if len(required) == 0 {
+		return true
+	}
+	if len(args) == 0 {
+		return false
+	}
+
+	for _, expected := range required {
+		matched := false
+		for _, value := range args {
+			if matchesField([]string{expected}, value) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
 	}
 	return true
 }

@@ -58,6 +58,107 @@ func TestEvaluateDenyOnAPIKeyForShell(t *testing.T) {
 	}
 }
 
+func TestEvaluateMatchesCommandAndArgs(t *testing.T) {
+	policy := models.Policy{
+		PolicyID:      "mvp",
+		PolicyVersion: "v1",
+		Rules: []models.Rule{
+			{
+				ID:       "deny-rm-recursive",
+				Priority: 100,
+				Effect:   models.DecisionDeny,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"shell.exec"},
+					Commands:    []string{"rm"},
+					Args:        []string{"-rf"},
+				},
+			},
+			{
+				ID:       "allow-shell",
+				Priority: 10,
+				Effect:   models.DecisionAllow,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"shell.exec"},
+				},
+			},
+		},
+	}
+	result := Evaluate(policy, DecisionContext{
+		Action: models.ActionMeta{
+			Type:     "shell.exec",
+			Command:  "rm",
+			Args:     []string{"-rf", "/tmp"},
+			Resource: "rm",
+		},
+		Findings: []models.ScanFinding{},
+	})
+	if result.Decision != models.DecisionDeny {
+		t.Fatalf("expected deny for rm -rf, got %s", result.Decision)
+	}
+
+	result = Evaluate(policy, DecisionContext{
+		Action: models.ActionMeta{
+			Type:    "shell.exec",
+			Command: "rm",
+			Args:    []string{"-f", "/tmp"},
+		},
+	})
+	if result.Decision != models.DecisionAllow {
+		t.Fatalf("expected allow for rm without recursive flag, got %s", result.Decision)
+	}
+}
+
+func TestEvaluateRequireSensitiveOnly(t *testing.T) {
+	policy := models.Policy{
+		PolicyID:      "mvp",
+		PolicyVersion: "v1",
+		Rules: []models.Rule{
+			{
+				ID:                   "transform-sensitive-shell",
+				Priority:             100,
+				Effect:               models.DecisionTransform,
+				RequireSensitiveOnly: true,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"file.write"},
+				},
+				EntityRequirements: []string{"email"},
+			},
+			{
+				ID:       "allow-file-write",
+				Priority: 10,
+				Effect:   models.DecisionAllow,
+				Match: models.MatchCriteria{
+					ActionTypes: []string{"file.write"},
+				},
+			},
+		},
+	}
+	withSensitive := Evaluate(policy, DecisionContext{
+		Action: models.ActionMeta{
+			Type:      "file.write",
+			Sensitive: true,
+		},
+		Findings: []models.ScanFinding{
+			{EntityType: "email", Value: "a@b.com", Start: 0, End: 7, Confidence: .98},
+		},
+	})
+	if withSensitive.Decision != models.DecisionTransform {
+		t.Fatalf("expected transform when sensitive action matches require_sensitive_only rule, got %s", withSensitive.Decision)
+	}
+
+	withoutSensitive := Evaluate(policy, DecisionContext{
+		Action: models.ActionMeta{
+			Type: "file.write",
+		},
+		Findings: []models.ScanFinding{
+			{EntityType: "email", Value: "a@b.com", Start: 0, End: 7, Confidence: .98},
+		},
+	})
+	if withoutSensitive.Decision != models.DecisionAllow {
+		t.Fatalf("expected allow when action is not marked sensitive, got %s", withoutSensitive.Decision)
+	}
+}
+
 func TestEvaluateTransformWhenSensitiveEntity(t *testing.T) {
 	policy := basePolicy()
 	ctx := DecisionContext{
@@ -235,9 +336,14 @@ func TestValidatePolicyRejectsEmptyMatchEntries(t *testing.T) {
 	policy := basePolicy()
 	policy.Rules[0].Match.ActionTypes = []string{""}
 	policy.Rules[0].Match.ResourcePrefix = []string{" "}
+	policy.Rules[0].Match.Commands = []string{" "}
+	policy.Rules[0].Match.Args = []string{" "}
 	if err := ValidatePolicy(policy); err == nil {
 		t.Fatal("expected empty match criteria error")
-	} else if !strings.Contains(err.Error(), "empty action_type condition") && !strings.Contains(err.Error(), "empty resource_prefix condition") {
+	} else if !strings.Contains(err.Error(), "empty action_type condition") &&
+		!strings.Contains(err.Error(), "empty resource_prefix condition") &&
+		!strings.Contains(err.Error(), "empty command condition") &&
+		!strings.Contains(err.Error(), "empty arg condition") {
 		t.Fatalf("unexpected validation error: %v", err)
 	}
 }

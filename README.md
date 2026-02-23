@@ -124,6 +124,31 @@ docker run --rm -p 8080:8080 \
 
 Use `/health` for liveness/readiness checks and mount writable storage for receipts.
 
+## Enforcement shim (runtime gate)
+
+`datafog-api` is a policy decision service. For runtime enforcement, use the optional shim:
+
+```sh
+go build -o datafog-shim ./cmd/datafog-shim
+
+./datafog-shim shell --policy-url http://localhost:8080 rm -rf /tmp/test
+```
+
+The shim calls `/v1/decide` before side-effect actions and only permits actions that resolve to:
+
+- `allow`
+- `allow_with_redaction`
+
+Actions that resolve to `transform` or `deny` are blocked until the caller applies an explicit transformation path.
+
+Supported actions:
+
+- `shell` (command + args)
+- `read-file <path>`
+- `write-file <path> <text>`
+
+Decision receipts are returned in stderr for every executed action.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment

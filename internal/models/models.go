@@ -160,6 +160,8 @@ type MatchCriteria struct {
 	ActionTypes    []string `json:"action_types,omitempty"`
 	Tools          []string `json:"tools,omitempty"`
 	ResourcePrefix []string `json:"resource_prefixes,omitempty"`
+	Commands       []string `json:"commands,omitempty"`
+	Args           []string `json:"args,omitempty"`
 }
 
 type Rule struct {

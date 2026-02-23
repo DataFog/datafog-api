@@ -41,8 +41,9 @@ Datafog API v2 will be a single Go service that owns policy decisioning and priv
   - `context` metadata: `tenant_id`, `actor_id`, `session_id`, `trace_id`, `request_id`.
 - Define policy rule model with deterministic matching:
   - `id`, `description`, `priority`, `effect`
-  - `match` on `action.type`, optional `resource`, optional `tool`, and optional `resource_prefix`.
+  - `match` on `action.type`, optional `resource`, optional `tool`, optional `resource_prefix`, optional `commands`, and optional `args` (list of required args).
   - `entity_requirements` for findings-driven gating
+  - `require_sensitive_only` to scope a rule to sensitive-marked actions
   - `transform` list when effect is `transform`.
 - Priority and conflict resolution:
   - evaluate all matching rules, then apply deterministic precedence: `deny` first, then `transform`, then `allow_with_redaction`, then `allow`.
