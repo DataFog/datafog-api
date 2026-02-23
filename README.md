@@ -186,6 +186,26 @@ export PATH="$HOME/.datafog/shims:$PATH"
 
 For the guided onboarding path, follow: `docs/runbooks/datafog-codex-agent-ux.md`.
 
+### Claude Code onboarding UX
+
+For a fast end-to-end workflow, run the bootstrap helper:
+
+```sh
+chmod +x scripts/claude-datafog-setup.sh
+./scripts/claude-datafog-setup.sh --policy-url http://localhost:8080
+source ~/.datafog/claude-datafog.env
+export PATH="$HOME/.datafog/shims:$PATH"
+```
+
+That helper:
+
+- builds `datafog-shim` when needed,
+- installs a managed `claude` shim,
+- writes `~/.datafog/claude-datafog.env`, and
+- prints validation steps.
+
+For the guided onboarding path, follow: `docs/runbooks/datafog-claude-agent-ux.md`.
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
