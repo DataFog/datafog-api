@@ -194,8 +194,28 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		findings = scan.ScanText(req.Text, nil)
 	}
 	result := policy.Evaluate(s.policy, policy.DecisionContext{Action: req.Action, Findings: findings})
+	actionHash, err := hashDecideAction(req.Action)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, models.APIError{Code: "hash_error", Message: "unable to hash action", Details: err.Error(), RequestID: requestID(r)})
+		return
+	}
+	inputHash, err := hashDecideInput(req)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, models.APIError{Code: "hash_error", Message: "unable to hash request input", Details: err.Error(), RequestID: requestID(r)})
+		return
+	}
 	receipt := s.store.NewReceipt(req, result.Decision, result, s.policy)
 	receipt.Findings = findings
+	receipt.ActionHash = actionHash
+	receipt.InputHash = inputHash
+	if len(result.TransformPlan) > 0 {
+		summary, err := json.Marshal(result.TransformPlan)
+		if err == nil {
+			receipt.SanitizedSummary = string(summary)
+		} else {
+			receipt.SanitizedSummary = `transform plan unavailable`
+		}
+	}
 	saved, err := s.store.Save(receipt)
 	if err != nil {
 		s.respondError(w, http.StatusInternalServerError, models.APIError{Code: "receipt_error", Message: "unable to persist receipt", Details: err.Error(), RequestID: requestID(r)})
@@ -449,11 +469,39 @@ func hashDecideRequest(req models.DecideRequest) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+func hashDecideAction(action models.ActionMeta) (string, error) {
+	sum, err := hashPayload(action)
+	if err != nil {
+		return "", err
+	}
+	return sum, nil
+}
+
+func hashDecideInput(req models.DecideRequest) (string, error) {
+	req.IdempotencyKey = ""
+	req.RequestID = ""
+	req.TraceID = ""
+	req.SessionID = ""
+	req.ActorID = ""
+	req.TenantID = ""
+	req.Action = models.ActionMeta{}
+	return hashPayload(req)
+}
+
 func hashScanRequest(req models.ScanRequest) (string, error) {
 	req.IdempotencyKey = ""
 	req.RequestID = ""
 	req.TraceID = ""
 	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func hashPayload(value interface{}) (string, error) {
+	body, err := json.Marshal(value)
 	if err != nil {
 		return "", err
 	}

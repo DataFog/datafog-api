@@ -26,11 +26,24 @@ All examples use `localhost:8080`.
 curl http://localhost:8080/health
 ```
 
-### `POST /v1/policy/version`
+### `GET /v1/policy/version`
 
 ```sh
 curl http://localhost:8080/v1/policy/version
 ```
+
+### Idempotency
+
+The following endpoints accept `idempotency_key`:
+
+- `/v1/scan`
+- `/v1/decide`
+- `/v1/transform`
+- `/v1/anonymize`
+
+On repeated requests with the same key:
+- identical payload returns the exact same response body and status.
+- mismatched payload returns `409` with `code: idempotency_conflict`.
 
 ### `POST /v1/scan`
 
@@ -75,4 +88,3 @@ curl http://localhost:8080/v1/receipts/<receipt-id>
 ```sh
 go test ./...
 ```
-

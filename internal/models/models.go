@@ -129,21 +129,24 @@ type HealthResponse struct {
 }
 
 type Receipt struct {
-	ReceiptID     string          `json:"receipt_id"`
-	Timestamp     time.Time       `json:"timestamp"`
-	RequestID     string          `json:"request_id"`
-	TraceID       string          `json:"trace_id"`
-	TenantID      string          `json:"tenant_id"`
-	ActorID       string          `json:"actor_id"`
-	SessionID     string          `json:"session_id"`
-	PolicyVersion string          `json:"policy_version"`
-	PolicyID      string          `json:"policy_id"`
-	Decision      Decision        `json:"decision"`
-	Action        ActionMeta      `json:"action"`
-	MatchedRules  []string        `json:"matched_rules"`
-	Findings      []ScanFinding   `json:"findings"`
-	TransformPlan []TransformStep `json:"transform_plan,omitempty"`
-	Reason        string          `json:"reason,omitempty"`
+	ReceiptID        string          `json:"receipt_id"`
+	Timestamp        time.Time       `json:"timestamp"`
+	RequestID        string          `json:"request_id"`
+	TraceID          string          `json:"trace_id"`
+	TenantID         string          `json:"tenant_id"`
+	ActorID          string          `json:"actor_id"`
+	SessionID        string          `json:"session_id"`
+	PolicyVersion    string          `json:"policy_version"`
+	PolicyID         string          `json:"policy_id"`
+	ActionHash       string          `json:"action_hash"`
+	InputHash        string          `json:"input_hash"`
+	SanitizedSummary string          `json:"sanitized_summary,omitempty"`
+	Decision         Decision        `json:"decision"`
+	Action           ActionMeta      `json:"action"`
+	MatchedRules     []string        `json:"matched_rules"`
+	Findings         []ScanFinding   `json:"findings"`
+	TransformPlan    []TransformStep `json:"transform_plan,omitempty"`
+	Reason           string          `json:"reason,omitempty"`
 }
 
 type APIError struct {

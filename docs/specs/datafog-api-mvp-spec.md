@@ -90,6 +90,13 @@ Datafog API v2 will be a single Go service that owns policy decisioning and priv
 
 ## Non-functional requirements
 - Deterministic behavior for same request + same policy snapshot.
+- Deterministic idempotent replays:
+  - repeatable responses for the same `idempotency_key` + request content.
+  - `409 conflict` with `idempotency_conflict` when the key is reused with different payload.
+- Receipts must include immutable integrity metadata:
+  - `action_hash` for the action object.
+  - `input_hash` for action+context sans transport and request metadata.
+  - `sanitized_summary` for transform decisions when transform plan is applied.
 - Latency targets for local path: p95 under 200ms for `decide` and `transform` on moderate text payloads.
 - Configurable policy file path and store path via environment variables.
 - Basic structured logs with no raw payload or secret material.
@@ -124,3 +131,4 @@ Datafog API v2 will be a single Go service that owns policy decisioning and priv
 7. Integration acceptance
    - Add end-to-end test for `decide` + `transform` + `/v1/receipts/{id}`.
    - Confirm startup docs and API examples.
+   - Add coverage for idempotency conflict and replay behavior.

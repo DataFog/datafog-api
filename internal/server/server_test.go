@@ -206,6 +206,76 @@ func TestDecideAndReceiptFlow(t *testing.T) {
 	if saved.ReceiptID != decided.ReceiptID {
 		t.Fatalf("receipt id mismatch")
 	}
+	if saved.ActionHash == "" {
+		t.Fatalf("expected action hash")
+	}
+	if saved.InputHash == "" {
+		t.Fatalf("expected input hash")
+	}
+	if len(saved.ActionHash) != 64 {
+		t.Fatalf("expected action hash length 64, got %d", len(saved.ActionHash))
+	}
+	if len(saved.InputHash) != 64 {
+		t.Fatalf("expected input hash length 64, got %d", len(saved.InputHash))
+	}
+	if decided.Decision == models.DecisionTransform && saved.SanitizedSummary == "" {
+		t.Fatalf("expected sanitized summary for transform decision")
+	}
+}
+
+func TestDecideTransformAndReceiptFlow(t *testing.T) {
+	server := makeServer(t)
+	decideBody := bytes.NewBufferString(`{"action":{"type":"file.write","resource":"notes.txt"},"text":"contact jane@example.com","request_id":"r1"}`)
+	decideReq := httptest.NewRequest(http.MethodPost, "/v1/decide", decideBody)
+	decideReq.Header.Set("Content-Type", "application/json")
+	decideResp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(decideResp, decideReq)
+	if decideResp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", decideResp.Code)
+	}
+	var decided models.DecideResponse
+	if err := json.NewDecoder(decideResp.Body).Decode(&decided); err != nil {
+		t.Fatalf("decode decide failed: %v", err)
+	}
+	if decided.Decision != models.DecisionTransform {
+		t.Fatalf("expected transform decision, got %q", decided.Decision)
+	}
+
+	transformBody := bytes.NewBufferString(`{"text":"contact jane@example.com","mode":"mask","idempotency_key":"chain-1"}`)
+	transformReq := httptest.NewRequest(http.MethodPost, "/v1/transform", transformBody)
+	transformReq.Header.Set("Content-Type", "application/json")
+	transformResp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(transformResp, transformReq)
+	if transformResp.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", transformResp.Code)
+	}
+	var transformed models.TransformResponse
+	if err := json.NewDecoder(transformResp.Body).Decode(&transformed); err != nil {
+		t.Fatalf("decode transformed failed: %v", err)
+	}
+	if strings.Contains(transformed.Output, "jane@example.com") {
+		t.Fatalf("expected masked output")
+	}
+
+	receiptReq := httptest.NewRequest(http.MethodGet, "/v1/receipts/"+decided.ReceiptID, nil)
+	receiptResp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(receiptResp, receiptReq)
+	if receiptResp.Code != http.StatusOK {
+		t.Fatalf("expected 200 receipt, got %d", receiptResp.Code)
+	}
+	var receipt models.Receipt
+	if err := json.NewDecoder(receiptResp.Body).Decode(&receipt); err != nil {
+		t.Fatalf("decode receipt failed: %v", err)
+	}
+	if receipt.ReceiptID != decided.ReceiptID {
+		t.Fatalf("receipt id mismatch")
+	}
+	if receipt.Decision != decided.Decision {
+		t.Fatalf("expected receipt decision %q, got %q", decided.Decision, receipt.Decision)
+	}
+	if receipt.SanitizedSummary == "" {
+		t.Fatalf("expected sanitized summary")
+	}
 }
 
 func TestDecideIdempotentReplay(t *testing.T) {
