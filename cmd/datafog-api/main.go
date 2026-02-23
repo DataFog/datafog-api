@@ -18,6 +18,7 @@ import (
 func main() {
 	policyPath := getenv("DATAFOG_POLICY_PATH", "config/policy.json")
 	receiptPath := getenv("DATAFOG_RECEIPT_PATH", "datafog_receipts.jsonl")
+	apiToken := getenv("DATAFOG_API_TOKEN", "")
 	addr := getenv("DATAFOG_ADDR", ":8080")
 	shutdownTimeout := getenvDuration("DATAFOG_SHUTDOWN_TIMEOUT", 10*time.Second)
 
@@ -31,7 +32,7 @@ func main() {
 		log.Fatalf("init receipts: %v", err)
 	}
 
-	h := server.New(policyData, store, log.Default())
+	h := server.New(policyData, store, log.Default(), apiToken)
 	srv := &http.Server{
 		Addr:              addr,
 		Handler:           h.Handler(),

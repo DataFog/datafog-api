@@ -15,6 +15,7 @@ Default configuration:
 - `DATAFOG_POLICY_PATH`: `config/policy.json`
 - `DATAFOG_RECEIPT_PATH`: `datafog_receipts.jsonl`
 - `DATAFOG_ADDR`: `:8080`
+- `DATAFOG_API_TOKEN`: optional API token for endpoint protection
 - `DATAFOG_READ_TIMEOUT`: `5s`
 - `DATAFOG_WRITE_TIMEOUT`: `10s`
 - `DATAFOG_READ_HEADER_TIMEOUT`: `2s`

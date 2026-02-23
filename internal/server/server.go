@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,7 @@ import (
 type Server struct {
 	policy     models.Policy
 	store      *receipts.ReceiptStore
+	apiToken   string
 	startedAt  time.Time
 	logger     *log.Logger
 	mu         sync.Mutex
@@ -85,13 +87,14 @@ type metricsResponse struct {
 	UptimeSeconds float64          `json:"uptime_seconds"`
 }
 
-func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Logger) *Server {
+func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Logger, apiToken string) *Server {
 	if logger == nil {
 		logger = log.Default()
 	}
 	return &Server{
 		policy:     policyData,
 		store:      store,
+		apiToken:   apiToken,
 		startedAt:  time.Now().UTC(),
 		logger:     logger,
 		decisions:  map[string]idempotentDecision{},
@@ -142,12 +145,45 @@ func (s *Server) Handler() http.Handler {
 			s.logger.Printf("request complete request_id=%s method=%s path=%s status=%d latency_ms=%d", reqID, r.Method, r.URL.Path, responseWriter.status, time.Since(startedAt).Milliseconds())
 		}()
 
+		if !s.authorized(r) {
+			s.respondError(responseWriter, http.StatusUnauthorized, models.APIError{Code: "unauthorized", Message: "missing or invalid API token", RequestID: reqID})
+			return
+		}
+
 		if pattern == "" {
 			s.respondError(responseWriter, http.StatusNotFound, models.APIError{Code: "not_found", Message: "endpoint not found", RequestID: reqID})
 			return
 		}
 		handler.ServeHTTP(responseWriter, r)
 	})
+}
+
+func (s *Server) authorized(r *http.Request) bool {
+	if s.apiToken == "" {
+		return true
+	}
+
+	if token := authorizationToken(r.Header.Get("Authorization")); token != "" && constantTimeTokenEqual(token, s.apiToken) {
+		return true
+	}
+
+	if token := strings.TrimSpace(r.Header.Get("X-API-Key")); token != "" && constantTimeTokenEqual(token, s.apiToken) {
+		return true
+	}
+
+	return false
+}
+
+func authorizationToken(value string) string {
+	parts := strings.Fields(strings.TrimSpace(value))
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return ""
+	}
+	return parts[1]
+}
+
+func constantTimeTokenEqual(provided, expected string) bool {
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
 }
 
 func canonicalizedRoute(pattern string, path string) string {

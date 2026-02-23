@@ -121,6 +121,7 @@ Datafog API v2 will be a single Go service that owns policy decisioning and priv
 ### Additional production readiness work before release
 
 - Add authN/Z at the edge (or strict allowlist + service mesh policy), with explicit deny-by-default.
+  - **Done (v2):** API token enforcement via `DATAFOG_API_TOKEN` (Bearer or `X-API-Key`) and `401 unauthorized` response code.
 - Add metrics quality improvements:
   - Per-endpoint latency distributions, saturation/error-rate alarms.
   - Route-level and code-path attribution for policy/transform load.

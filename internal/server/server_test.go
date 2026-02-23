@@ -27,12 +27,16 @@ func testPolicy() models.Policy {
 }
 
 func makeServer(t *testing.T) *http.Server {
+	return makeServerWithToken(t, "")
+}
+
+func makeServerWithToken(t *testing.T, apiToken string) *http.Server {
 	t.Helper()
 	store, err := receipts.NewReceiptStore(t.TempDir() + "/receipts.jsonl")
 	if err != nil {
 		t.Fatalf("new store: %v", err)
 	}
-	h := New(testPolicy(), store, nil)
+	h := New(testPolicy(), store, nil, apiToken)
 	return &http.Server{Handler: h.Handler()}
 }
 
@@ -63,6 +67,45 @@ func TestHealthEndpoint(t *testing.T) {
 	if _, err := time.Parse(time.RFC3339, got.StartedAt); err != nil {
 		t.Fatalf("expected valid RFC3339 started_at, got %q", got.StartedAt)
 	}
+}
+
+func TestTokenAuth(t *testing.T) {
+	server := makeServerWithToken(t, "token123")
+
+	t.Run("passes_with_valid_bearer_token", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req.Header.Set("Authorization", "Bearer token123")
+		resp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.Code)
+		}
+	})
+
+	t.Run("passes_with_valid_api_key_header", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req.Header.Set("X-API-Key", "token123")
+		resp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		if resp.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d", resp.Code)
+		}
+	})
+
+	t.Run("missing_token_is_unauthorized", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		resp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		assertJSONError(t, resp, http.StatusUnauthorized, "unauthorized")
+	})
+
+	t.Run("invalid_token_is_unauthorized", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/health", nil)
+		req.Header.Set("X-API-Key", "bad-token")
+		resp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(resp, req)
+		assertJSONError(t, resp, http.StatusUnauthorized, "unauthorized")
+	})
 }
 
 func TestPolicyVersionEndpoint(t *testing.T) {
