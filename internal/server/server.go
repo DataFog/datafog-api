@@ -1,10 +1,13 @@
 package server
 
 import (
+	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"mime"
 	"net/http"
@@ -29,6 +32,25 @@ type Server struct {
 	scans      map[string]idempotentCachedResponse
 	transforms map[string]idempotentCachedResponse
 	anonymizes map[string]idempotentCachedResponse
+}
+
+type requestIDContextKey struct{}
+
+type responseStatusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *responseStatusWriter) WriteHeader(code int) {
+	w.status = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *responseStatusWriter) Write(body []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(body)
 }
 
 const (
@@ -72,12 +94,34 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/anonymize", s.handleAnonymize)
 	mux.HandleFunc("/v1/receipts/", s.handleReceipt)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reqID := requestID(r)
+		if reqID == "" {
+			reqID = newRequestID()
+		}
+		r = r.WithContext(context.WithValue(r.Context(), requestIDContextKey{}, reqID))
+		w.Header().Set("X-Request-ID", reqID)
+
+		responseWriter := &responseStatusWriter{ResponseWriter: w}
+		startedAt := time.Now()
+		defer func() {
+			if rec := recover(); rec != nil {
+				s.logger.Printf("request panic request_id=%s method=%s path=%s err=%v", reqID, r.Method, r.URL.Path, rec)
+				if responseWriter.status == 0 {
+					s.respondError(responseWriter, http.StatusInternalServerError, models.APIError{Code: "internal_error", Message: "internal server error", RequestID: reqID})
+				}
+			}
+			if responseWriter.status == 0 {
+				responseWriter.status = http.StatusOK
+			}
+			s.logger.Printf("request complete request_id=%s method=%s path=%s status=%d latency_ms=%d", reqID, r.Method, r.URL.Path, responseWriter.status, time.Since(startedAt).Milliseconds())
+		}()
+
 		handler, pattern := mux.Handler(r)
 		if pattern == "" {
-			s.respondError(w, http.StatusNotFound, models.APIError{Code: "not_found", Message: "endpoint not found", RequestID: requestID(r)})
+			s.respondError(responseWriter, http.StatusNotFound, models.APIError{Code: "not_found", Message: "endpoint not found", RequestID: reqID})
 			return
 		}
-		handler.ServeHTTP(w, r)
+		handler.ServeHTTP(responseWriter, r)
 	})
 }
 
@@ -289,6 +333,30 @@ func (s *Server) handleTransform(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "text is required", RequestID: requestID(r)})
 		return
 	}
+	if req.Mode != "" {
+		req.Mode = models.TransformMode(strings.ToLower(strings.TrimSpace(string(req.Mode))))
+		if !isAllowedTransformMode(req.Mode) {
+			s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "unsupported transform mode", RequestID: requestID(r)})
+			return
+		}
+	}
+	if len(req.EntityModes) > 0 {
+		canonicalModes := make(map[string]models.TransformMode, len(req.EntityModes))
+		for entityType, mode := range req.EntityModes {
+			entityType = strings.TrimSpace(entityType)
+			if entityType == "" {
+				s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "entity_modes keys must not be empty", RequestID: requestID(r)})
+				return
+			}
+			canonicalMode := models.TransformMode(strings.ToLower(strings.TrimSpace(string(mode))))
+			if !isAllowedTransformMode(canonicalMode) {
+				s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "unsupported transform mode", RequestID: requestID(r)})
+				return
+			}
+			canonicalModes[entityType] = canonicalMode
+		}
+		req.EntityModes = canonicalModes
+	}
 	if req.IdempotencyKey != "" {
 		reqHash, err := hashTransformRequest(req)
 		if err != nil {
@@ -474,6 +542,23 @@ func (s *Server) respondRaw(w http.ResponseWriter, status int, body []byte) {
 	}
 }
 
+func isAllowedTransformMode(mode models.TransformMode) bool {
+	switch mode {
+	case models.TransformModeMask, models.TransformModeTokenize, models.TransformModeAnonymize, models.TransformModeRedact:
+		return true
+	default:
+		return false
+	}
+}
+
+func newRequestID() string {
+	id := make([]byte, 16)
+	if _, err := rand.Read(id); err != nil {
+		return fmt.Sprintf("rid-%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(id)
+}
+
 func (s *Server) respondError(w http.ResponseWriter, status int, errResp models.APIError) {
 	if errResp.Code == "" {
 		errResp.Code = "error"
@@ -482,6 +567,9 @@ func (s *Server) respondError(w http.ResponseWriter, status int, errResp models.
 }
 
 func requestID(r *http.Request) string {
+	if rid, ok := r.Context().Value(requestIDContextKey{}).(string); ok && rid != "" {
+		return rid
+	}
 	if rid := r.Header.Get("x-request-id"); rid != "" {
 		return rid
 	}

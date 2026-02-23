@@ -660,6 +660,18 @@ func TestValidateMethodAndBadInputs(t *testing.T) {
 		anonymizeResp := httptest.NewRecorder()
 		server.Handler.ServeHTTP(anonymizeResp, anonymizeReq)
 		assertJSONError(t, anonymizeResp, http.StatusBadRequest, "invalid_request")
+
+		invalidModeReq := httptest.NewRequest(http.MethodPost, "/v1/transform", bytes.NewBufferString(`{"text":"jane@example.com","mode":"unsupported-mode"}`))
+		invalidModeReq.Header.Set("Content-Type", "application/json")
+		invalidModeResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(invalidModeResp, invalidModeReq)
+		assertJSONError(t, invalidModeResp, http.StatusBadRequest, "invalid_request")
+
+		invalidEntityModeReq := httptest.NewRequest(http.MethodPost, "/v1/transform", bytes.NewBufferString(`{"text":"jane@example.com","entity_modes":{"email":"unsupported-mode"}}`))
+		invalidEntityModeReq.Header.Set("Content-Type", "application/json")
+		invalidEntityModeResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(invalidEntityModeResp, invalidEntityModeReq)
+		assertJSONError(t, invalidEntityModeResp, http.StatusBadRequest, "invalid_request")
 	})
 
 	t.Run("invalid_content_type", func(t *testing.T) {
@@ -696,6 +708,24 @@ func TestValidateMethodAndBadInputs(t *testing.T) {
 		resp := httptest.NewRecorder()
 		server.Handler.ServeHTTP(resp, req)
 		assertJSONError(t, resp, http.StatusRequestEntityTooLarge, "request_too_large")
+
+		decideReq := httptest.NewRequest(http.MethodPost, "/v1/decide", bytes.NewBufferString(`{"action":{"type":"file.read"},"text":"`+strings.Repeat("x", int(maxRequestBodyBytes)+1)+`"}`))
+		decideReq.Header.Set("Content-Type", "application/json")
+		decideResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(decideResp, decideReq)
+		assertJSONError(t, decideResp, http.StatusRequestEntityTooLarge, "request_too_large")
+
+		transformReq := httptest.NewRequest(http.MethodPost, "/v1/transform", bytes.NewBufferString(payload))
+		transformReq.Header.Set("Content-Type", "application/json")
+		transformResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(transformResp, transformReq)
+		assertJSONError(t, transformResp, http.StatusRequestEntityTooLarge, "request_too_large")
+
+		anonymizeReq := httptest.NewRequest(http.MethodPost, "/v1/anonymize", bytes.NewBufferString(payload))
+		anonymizeReq.Header.Set("Content-Type", "application/json")
+		anonymizeResp := httptest.NewRecorder()
+		server.Handler.ServeHTTP(anonymizeResp, anonymizeReq)
+		assertJSONError(t, anonymizeResp, http.StatusRequestEntityTooLarge, "request_too_large")
 	})
 
 	t.Run("missing_receipt", func(t *testing.T) {
@@ -799,6 +829,19 @@ func TestErrorIncludesRequestIDHeader(t *testing.T) {
 	err := assertJSONError(t, resp, http.StatusBadRequest, "invalid_request")
 	if err.RequestID != "req-123" {
 		t.Fatalf("expected request id header to be echoed, got %q", err.RequestID)
+	}
+	if got := resp.Header().Get("X-Request-ID"); got != "req-123" {
+		t.Fatalf("expected response request id header to be echoed, got %q", got)
+	}
+}
+
+func TestRequestIDGeneratedWhenMissing(t *testing.T) {
+	server := makeServer(t)
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	resp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	if got := resp.Header().Get("X-Request-ID"); got == "" {
+		t.Fatalf("expected generated request id header")
 	}
 }
 
