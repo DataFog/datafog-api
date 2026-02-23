@@ -18,12 +18,15 @@ import (
 )
 
 type Server struct {
-	policy    models.Policy
-	store     *receipts.ReceiptStore
-	startedAt time.Time
-	logger    *log.Logger
-	mu        sync.Mutex
-	decisions map[string]idempotentDecision
+	policy     models.Policy
+	store      *receipts.ReceiptStore
+	startedAt  time.Time
+	logger     *log.Logger
+	mu         sync.Mutex
+	decisions  map[string]idempotentDecision
+	scans      map[string]idempotentCachedResponse
+	transforms map[string]idempotentCachedResponse
+	anonymizes map[string]idempotentCachedResponse
 }
 
 type idempotentDecision struct {
@@ -31,16 +34,25 @@ type idempotentDecision struct {
 	response    models.DecideResponse
 }
 
+type idempotentCachedResponse struct {
+	requestHash string
+	body        []byte
+	status      int
+}
+
 func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Logger) *Server {
 	if logger == nil {
 		logger = log.Default()
 	}
 	return &Server{
-		policy:    policyData,
-		store:     store,
-		startedAt: time.Now().UTC(),
-		logger:    logger,
-		decisions: map[string]idempotentDecision{},
+		policy:     policyData,
+		store:      store,
+		startedAt:  time.Now().UTC(),
+		logger:     logger,
+		decisions:  map[string]idempotentDecision{},
+		scans:      map[string]idempotentCachedResponse{},
+		transforms: map[string]idempotentCachedResponse{},
+		anonymizes: map[string]idempotentCachedResponse{},
 	}
 }
 
@@ -96,6 +108,24 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "text is required", RequestID: requestID(r)})
 		return
 	}
+	if req.IdempotencyKey != "" {
+		reqHash, err := hashScanRequest(req)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "unable to hash request payload", Details: err.Error(), RequestID: requestID(r)})
+			return
+		}
+		s.mu.Lock()
+		existing, ok := s.scans[req.IdempotencyKey]
+		s.mu.Unlock()
+		if ok {
+			if existing.requestHash != reqHash {
+				s.respondError(w, http.StatusConflict, models.APIError{Code: "idempotency_conflict", Message: "different request payload for same idempotency_key", RequestID: requestID(r)})
+				return
+			}
+			s.respondRaw(w, existing.status, existing.body)
+			return
+		}
+	}
 
 	findings := scan.ScanText(req.Text, req.EntityTypes)
 	res := models.ScanResponse{
@@ -104,6 +134,23 @@ func (s *Server) handleScan(w http.ResponseWriter, r *http.Request) {
 		Findings:      findings,
 		PolicyVersion: s.policy.PolicyVersion,
 		PolicyID:      s.policy.PolicyID,
+	}
+	if req.IdempotencyKey != "" {
+		body, err := json.Marshal(res)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, models.APIError{Code: "encode_error", Message: "unable to encode response", Details: err.Error(), RequestID: requestID(r)})
+			return
+		}
+		hash, _ := hashScanRequest(req)
+		s.mu.Lock()
+		s.scans[req.IdempotencyKey] = idempotentCachedResponse{
+			requestHash: hash,
+			body:        body,
+			status:      http.StatusOK,
+		}
+		s.mu.Unlock()
+		s.respondRaw(w, http.StatusOK, body)
+		return
 	}
 	s.respond(w, http.StatusOK, res)
 }
@@ -193,6 +240,24 @@ func (s *Server) handleTransform(w http.ResponseWriter, r *http.Request) {
 		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "text is required", RequestID: requestID(r)})
 		return
 	}
+	if req.IdempotencyKey != "" {
+		reqHash, err := hashTransformRequest(req)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "unable to hash request payload", Details: err.Error(), RequestID: requestID(r)})
+			return
+		}
+		s.mu.Lock()
+		existing, ok := s.transforms[req.IdempotencyKey]
+		s.mu.Unlock()
+		if ok {
+			if existing.requestHash != reqHash {
+				s.respondError(w, http.StatusConflict, models.APIError{Code: "idempotency_conflict", Message: "different request payload for same idempotency_key", RequestID: requestID(r)})
+				return
+			}
+			s.respondRaw(w, existing.status, existing.body)
+			return
+		}
+	}
 
 	findings := req.Findings
 	if len(findings) == 0 {
@@ -222,6 +287,23 @@ func (s *Server) handleTransform(w http.ResponseWriter, r *http.Request) {
 		PolicyVersion: s.policy.PolicyVersion,
 		Stats:         stats,
 	}
+	if req.IdempotencyKey != "" {
+		body, err := json.Marshal(res)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, models.APIError{Code: "encode_error", Message: "unable to encode response", Details: err.Error(), RequestID: requestID(r)})
+			return
+		}
+		hash, _ := hashTransformRequest(req)
+		s.mu.Lock()
+		s.transforms[req.IdempotencyKey] = idempotentCachedResponse{
+			requestHash: hash,
+			body:        body,
+			status:      http.StatusOK,
+		}
+		s.mu.Unlock()
+		s.respondRaw(w, http.StatusOK, body)
+		return
+	}
 	s.respond(w, http.StatusOK, res)
 }
 
@@ -239,6 +321,24 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 	if req.Text == "" {
 		s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "text is required", RequestID: requestID(r)})
 		return
+	}
+	if req.IdempotencyKey != "" {
+		reqHash, err := hashAnonymizeRequest(req)
+		if err != nil {
+			s.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "unable to hash request payload", Details: err.Error(), RequestID: requestID(r)})
+			return
+		}
+		s.mu.Lock()
+		existing, ok := s.anonymizes[req.IdempotencyKey]
+		s.mu.Unlock()
+		if ok {
+			if existing.requestHash != reqHash {
+				s.respondError(w, http.StatusConflict, models.APIError{Code: "idempotency_conflict", Message: "different request payload for same idempotency_key", RequestID: requestID(r)})
+				return
+			}
+			s.respondRaw(w, existing.status, existing.body)
+			return
+		}
 	}
 
 	findings := req.Findings
@@ -264,6 +364,23 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		PolicyID:      s.policy.PolicyID,
 		PolicyVersion: s.policy.PolicyVersion,
 		Stats:         stats,
+	}
+	if req.IdempotencyKey != "" {
+		body, err := json.Marshal(res)
+		if err != nil {
+			s.respondError(w, http.StatusInternalServerError, models.APIError{Code: "encode_error", Message: "unable to encode response", Details: err.Error(), RequestID: requestID(r)})
+			return
+		}
+		hash, _ := hashAnonymizeRequest(req)
+		s.mu.Lock()
+		s.anonymizes[req.IdempotencyKey] = idempotentCachedResponse{
+			requestHash: hash,
+			body:        body,
+			status:      http.StatusOK,
+		}
+		s.mu.Unlock()
+		s.respondRaw(w, http.StatusOK, body)
+		return
 	}
 	s.respond(w, http.StatusOK, res)
 }
@@ -295,6 +412,14 @@ func (s *Server) respond(w http.ResponseWriter, status int, payload interface{})
 	}
 }
 
+func (s *Server) respondRaw(w http.ResponseWriter, status int, body []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if _, err := w.Write(body); err != nil {
+		s.logger.Printf("response write failed: %v", err)
+	}
+}
+
 func (s *Server) respondError(w http.ResponseWriter, status int, errResp models.APIError) {
 	if errResp.Code == "" {
 		errResp.Code = "error"
@@ -310,6 +435,45 @@ func requestID(r *http.Request) string {
 }
 
 func hashDecideRequest(req models.DecideRequest) (string, error) {
+	req.IdempotencyKey = ""
+	req.RequestID = ""
+	req.TraceID = ""
+	req.SessionID = ""
+	req.ActorID = ""
+	req.TenantID = ""
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func hashScanRequest(req models.ScanRequest) (string, error) {
+	req.IdempotencyKey = ""
+	req.RequestID = ""
+	req.TraceID = ""
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func hashTransformRequest(req models.TransformRequest) (string, error) {
+	req.IdempotencyKey = ""
+	req.RequestID = ""
+	req.TraceID = ""
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:]), nil
+}
+
+func hashAnonymizeRequest(req models.AnonymizeRequest) (string, error) {
 	req.IdempotencyKey = ""
 	req.RequestID = ""
 	req.TraceID = ""

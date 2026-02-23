@@ -108,10 +108,11 @@ type TransformStats struct {
 }
 
 type AnonymizeRequest struct {
-	Text      string        `json:"text"`
-	Findings  []ScanFinding `json:"findings,omitempty"`
-	RequestID string        `json:"request_id,omitempty"`
-	TraceID   string        `json:"trace_id,omitempty"`
+	Text           string        `json:"text"`
+	Findings       []ScanFinding `json:"findings,omitempty"`
+	RequestID      string        `json:"request_id,omitempty"`
+	TraceID        string        `json:"trace_id,omitempty"`
+	IdempotencyKey string        `json:"idempotency_key,omitempty"`
 }
 
 type PolicyRequestContext struct {

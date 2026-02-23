@@ -266,6 +266,168 @@ func TestDecideIdempotencyConflict(t *testing.T) {
 	assertJSONError(t, resp2, http.StatusConflict, "idempotency_conflict")
 }
 
+func TestScanIdempotentReplay(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"text":"contact jane@example.com","idempotency_key":"scan-idem-1","request_id":"r1"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/scan", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+	var first models.ScanResponse
+	if err := json.NewDecoder(resp1.Body).Decode(&first); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	body2 := bytes.NewBufferString(`{"text":"contact jane@example.com","idempotency_key":"scan-idem-1","request_id":"r2"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/scan", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	if resp2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.Code)
+	}
+	var second models.ScanResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&second); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if len(first.Findings) != len(second.Findings) || first.Findings[0].EntityType != second.Findings[0].EntityType {
+		t.Fatalf("expected identical findings")
+	}
+}
+
+func TestScanIdempotencyConflict(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"text":"contact jane@example.com","idempotency_key":"scan-idem-conflict"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/scan", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+
+	body2 := bytes.NewBufferString(`{"text":"different text with no pii","idempotency_key":"scan-idem-conflict"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/scan", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	assertJSONError(t, resp2, http.StatusConflict, "idempotency_conflict")
+}
+
+func TestTransformIdempotentReplay(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"text":"contact jane@example.com","mode":"mask","idempotency_key":"transform-idem-1","request_id":"r1"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/transform", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+	var first models.TransformResponse
+	if err := json.NewDecoder(resp1.Body).Decode(&first); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	body2 := bytes.NewBufferString(`{"text":"contact jane@example.com","mode":"mask","idempotency_key":"transform-idem-1","request_id":"r2"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/transform", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	if resp2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.Code)
+	}
+	var second models.TransformResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&second); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if first.Stats.EntitiesTransformed != second.Stats.EntitiesTransformed {
+		t.Fatalf("expected identical transformed entity count")
+	}
+	if first.Stats.ModesApplied != second.Stats.ModesApplied {
+		t.Fatalf("expected identical modes applied")
+	}
+}
+
+func TestTransformIdempotencyConflict(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"text":"contact jane@example.com","mode":"mask","idempotency_key":"transform-idem-conflict"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/transform", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+
+	body2 := bytes.NewBufferString(`{"text":"different text","mode":"mask","idempotency_key":"transform-idem-conflict"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/transform", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	assertJSONError(t, resp2, http.StatusConflict, "idempotency_conflict")
+}
+
+func TestAnonymizeIdempotentReplay(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"text":"contact jane@example.com","idempotency_key":"anon-idem-1","request_id":"r1"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/anonymize", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+	var first models.TransformResponse
+	if err := json.NewDecoder(resp1.Body).Decode(&first); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	body2 := bytes.NewBufferString(`{"text":"contact jane@example.com","idempotency_key":"anon-idem-1","request_id":"r2"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/anonymize", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	if resp2.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp2.Code)
+	}
+	var second models.TransformResponse
+	if err := json.NewDecoder(resp2.Body).Decode(&second); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if first.Stats.EntitiesTransformed != second.Stats.EntitiesTransformed {
+		t.Fatalf("expected identical transformed entity count")
+	}
+	if first.Output != second.Output {
+		t.Fatalf("expected identical anonymized output")
+	}
+}
+
+func TestAnonymizeIdempotencyConflict(t *testing.T) {
+	server := makeServer(t)
+	body1 := bytes.NewBufferString(`{"text":"contact jane@example.com","idempotency_key":"anon-idem-conflict"}`)
+	req1 := httptest.NewRequest(http.MethodPost, "/v1/anonymize", body1)
+	req1.Header.Set("Content-Type", "application/json")
+	resp1 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp1, req1)
+	if resp1.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp1.Code)
+	}
+
+	body2 := bytes.NewBufferString(`{"text":"another contact john@example.com","idempotency_key":"anon-idem-conflict"}`)
+	req2 := httptest.NewRequest(http.MethodPost, "/v1/anonymize", body2)
+	req2.Header.Set("Content-Type", "application/json")
+	resp2 := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp2, req2)
+	assertJSONError(t, resp2, http.StatusConflict, "idempotency_conflict")
+}
+
 func TestValidateMethodAndBadInputs(t *testing.T) {
 	server := makeServer(t)
 	t.Run("method_not_allowed", func(t *testing.T) {
