@@ -102,3 +102,78 @@ curl http://localhost:8080/v1/receipts/<receipt-id>
 ```sh
 go test ./...
 ```
+
+## Deployment
+
+The service is deployed as a single stateless binary with optional mounted policy and receipt storage.
+
+### Local/container quick start
+
+```sh
+docker build -t datafog-api:v2 .
+docker run --rm -p 8080:8080 \
+  -e DATAFOG_API_TOKEN=changeme \
+  -e DATAFOG_RATE_LIMIT_RPS=50 \
+  -e DATAFOG_RECEIPT_PATH=/var/lib/datafog/datafog_receipts.jsonl \
+  -v $(pwd)/config:/app/config:ro \
+  -v datafog-receipts:/var/lib/datafog \
+  datafog-api:v2
+```
+
+### Kubernetes-style production pattern
+
+Use `/health` for liveness/readiness checks and mount writable storage for receipts.
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: datafog-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: datafog-api
+  template:
+    metadata:
+      labels:
+        app: datafog-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+      containers:
+      - name: datafog-api
+        image: ghcr.io/datafog/datafog-api:v2
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATAFOG_ADDR
+          value: ":8080"
+        - name: DATAFOG_POLICY_PATH
+          value: "/app/config/policy.json"
+        - name: DATAFOG_RECEIPT_PATH
+          value: "/var/lib/datafog/datafog_receipts.jsonl"
+        - name: DATAFOG_RATE_LIMIT_RPS
+          value: "100"
+        volumeMounts:
+        - name: policy
+          mountPath: /app/config
+          readOnly: true
+        - name: receipts
+          mountPath: /var/lib/datafog
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+      volumes:
+      - name: policy
+        configMap:
+          name: datafog-policy
+      - name: receipts
+        persistentVolumeClaim:
+          claimName: datafog-receipts
+```
