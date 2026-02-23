@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -200,6 +201,47 @@ func TestValidatePolicyRejectsUnsupportedEntityRequirement(t *testing.T) {
 	}
 }
 
+func TestValidatePolicyRejectsInvalidTransformMode(t *testing.T) {
+	policy := basePolicy()
+	policy.Rules[1].EntityTransforms = []models.TransformStep{{EntityType: "email", Mode: "invalid"}}
+	if err := ValidatePolicy(policy); err == nil {
+		t.Fatal("expected invalid transform mode error")
+	} else if !strings.Contains(err.Error(), "unsupported transform mode") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestValidatePolicyRejectsUnsupportedTransformEntityType(t *testing.T) {
+	policy := basePolicy()
+	policy.Rules[1].EntityTransforms = []models.TransformStep{{EntityType: "not_real", Mode: models.TransformModeMask}}
+	if err := ValidatePolicy(policy); err == nil {
+		t.Fatal("expected unsupported transform entity type error")
+	} else if !strings.Contains(err.Error(), "unsupported transform entity type") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestValidatePolicyRejectsEmptyRuleID(t *testing.T) {
+	policy := basePolicy()
+	policy.Rules[0].ID = " "
+	if err := ValidatePolicy(policy); err == nil {
+		t.Fatal("expected missing rule id error")
+	} else if !strings.Contains(err.Error(), "rule missing id") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestValidatePolicyRejectsEmptyMatchEntries(t *testing.T) {
+	policy := basePolicy()
+	policy.Rules[0].Match.ActionTypes = []string{""}
+	policy.Rules[0].Match.ResourcePrefix = []string{" "}
+	if err := ValidatePolicy(policy); err == nil {
+		t.Fatal("expected empty match criteria error")
+	} else if !strings.Contains(err.Error(), "empty action_type condition") && !strings.Contains(err.Error(), "empty resource_prefix condition") {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
 type policyDecisionVector struct {
 	Name              string               `json:"name"`
 	Action            models.ActionMeta    `json:"action"`
@@ -262,5 +304,17 @@ func TestEvaluateGoldenPolicyVectors(t *testing.T) {
 				t.Fatalf("expected transform plan")
 			}
 		})
+	}
+}
+
+func TestLoadPolicyFromFileRejectsMissingMetadata(t *testing.T) {
+	policyPath := t.TempDir() + "/policy.json"
+	policy := `{"rules":[{"id":"allow-read","priority":1,"effect":"allow","match":{"action_types":["file.read"]}}]}`
+	if err := os.WriteFile(policyPath, []byte(policy), 0o644); err != nil {
+		t.Fatalf("seed policy file failed: %v", err)
+	}
+
+	if _, err := LoadPolicyFromFile(policyPath); err == nil {
+		t.Fatal("expected policy load error")
 	}
 }

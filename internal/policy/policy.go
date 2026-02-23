@@ -26,12 +26,6 @@ func LoadPolicyFromFile(path string) (models.Policy, error) {
 	if err := json.Unmarshal(content, &policy); err != nil {
 		return policy, err
 	}
-	if policy.PolicyID == "" {
-		policy.PolicyID = "default"
-	}
-	if policy.PolicyVersion == "" {
-		policy.PolicyVersion = "0001"
-	}
 	if err := ValidatePolicy(policy); err != nil {
 		return policy, err
 	}
@@ -40,25 +34,69 @@ func LoadPolicyFromFile(path string) (models.Policy, error) {
 
 func ValidatePolicy(policy models.Policy) error {
 	errors := make([]string, 0)
+	if strings.TrimSpace(policy.PolicyID) == "" {
+		errors = append(errors, "policy_id is required")
+	}
+	if strings.TrimSpace(policy.PolicyVersion) == "" {
+		errors = append(errors, "policy_version is required")
+	}
 	if len(policy.Rules) == 0 {
 		errors = append(errors, "policy must contain at least one rule")
 	}
 
 	seenRuleIDs := map[string]struct{}{}
 	for _, rule := range policy.Rules {
-		if rule.ID == "" {
+		ruleID := strings.TrimSpace(rule.ID)
+		if ruleID == "" {
 			errors = append(errors, "rule missing id")
+			continue
 		}
-		if _, ok := seenRuleIDs[rule.ID]; ok {
-			errors = append(errors, fmt.Sprintf("duplicate rule id: %s", rule.ID))
+		if _, ok := seenRuleIDs[ruleID]; ok {
+			errors = append(errors, fmt.Sprintf("duplicate rule id: %s", ruleID))
 		}
-		seenRuleIDs[rule.ID] = struct{}{}
+		seenRuleIDs[ruleID] = struct{}{}
+		if rule.Priority < 0 {
+			errors = append(errors, fmt.Sprintf("rule %s has negative priority: %d", ruleID, rule.Priority))
+		}
 		if _, ok := RequiredDecisionInputs[rule.Effect]; !ok {
-			errors = append(errors, fmt.Sprintf("rule %s has unsupported effect: %s", rule.ID, rule.Effect))
+			errors = append(errors, fmt.Sprintf("rule %s has unsupported effect: %s", ruleID, rule.Effect))
+		}
+		for _, actionType := range rule.Match.ActionTypes {
+			if strings.TrimSpace(actionType) == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has empty action_type condition", ruleID))
+			}
+		}
+		for _, tool := range rule.Match.Tools {
+			if strings.TrimSpace(tool) == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has empty tool condition", ruleID))
+			}
+		}
+		for _, prefix := range rule.Match.ResourcePrefix {
+			if strings.TrimSpace(prefix) == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has empty resource_prefix condition", ruleID))
+			}
 		}
 		for _, requirement := range rule.EntityRequirements {
-			if _, ok := defaultEntityTypes[strings.ToLower(requirement)]; !ok {
-				errors = append(errors, fmt.Sprintf("rule %s references unsupported required entity type: %s", rule.ID, requirement))
+			reqName := strings.ToLower(strings.TrimSpace(requirement))
+			if reqName == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has empty entity_requirement", ruleID))
+				continue
+			}
+			if _, ok := defaultEntityTypes[reqName]; !ok {
+				errors = append(errors, fmt.Sprintf("rule %s references unsupported required entity type: %s", ruleID, requirement))
+			}
+		}
+		for _, step := range rule.EntityTransforms {
+			if strings.TrimSpace(step.EntityType) == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has entity transform without entity_type", ruleID))
+				continue
+			}
+			entityType := strings.ToLower(strings.TrimSpace(step.EntityType))
+			if _, ok := defaultEntityTypes[entityType]; !ok {
+				errors = append(errors, fmt.Sprintf("rule %s references unsupported transform entity type: %s", ruleID, step.EntityType))
+			}
+			if _, ok := allowedModes[step.Mode]; !ok {
+				errors = append(errors, fmt.Sprintf("rule %s references unsupported transform mode: %s", ruleID, step.Mode))
 			}
 		}
 	}
@@ -67,6 +105,13 @@ func ValidatePolicy(policy models.Policy) error {
 		return nil
 	}
 	return fmt.Errorf(strings.Join(errors, "; "))
+}
+
+var allowedModes = map[models.TransformMode]struct{}{
+	models.TransformModeMask:      {},
+	models.TransformModeTokenize:  {},
+	models.TransformModeAnonymize: {},
+	models.TransformModeRedact:    {},
 }
 
 type DecisionContext struct {
@@ -237,7 +282,7 @@ func hasRequiredEntities(reqs []string, found map[string]struct{}) bool {
 	for _, req := range reqs {
 		reqName := strings.ToLower(req)
 		if _, ok := defaultEntityTypes[reqName]; !ok {
-			continue
+			return false
 		}
 		if _, ok := found[reqName]; !ok {
 			return false
