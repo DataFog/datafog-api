@@ -280,7 +280,7 @@ func matchesField(allowed []string, value string) bool {
 
 func hasRequiredEntities(reqs []string, found map[string]struct{}) bool {
 	for _, req := range reqs {
-		reqName := strings.ToLower(req)
+		reqName := strings.ToLower(strings.TrimSpace(req))
 		if _, ok := defaultEntityTypes[reqName]; !ok {
 			return false
 		}
