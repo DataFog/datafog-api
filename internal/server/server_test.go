@@ -41,6 +41,9 @@ func TestHealthEndpoint(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	resp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(resp, req)
+	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
@@ -67,6 +70,9 @@ func TestPolicyVersionEndpoint(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/v1/policy/version", nil)
 	resp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(resp, req)
+	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
@@ -93,6 +99,9 @@ func TestScanEndpoint(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(resp, req)
+	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
@@ -121,6 +130,9 @@ func TestTransformEndpoint(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(resp, req)
+	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
@@ -153,6 +165,9 @@ func TestAnonymizeEndpoint(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(resp, req)
+	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
@@ -179,6 +194,9 @@ func TestDecideAndReceiptFlow(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(resp, req)
+	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
@@ -230,6 +248,9 @@ func TestDecideTransformAndReceiptFlow(t *testing.T) {
 	decideReq.Header.Set("Content-Type", "application/json")
 	decideResp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(decideResp, decideReq)
+	if ct := decideResp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if decideResp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", decideResp.Code)
 	}
@@ -246,6 +267,9 @@ func TestDecideTransformAndReceiptFlow(t *testing.T) {
 	transformReq.Header.Set("Content-Type", "application/json")
 	transformResp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(transformResp, transformReq)
+	if ct := transformResp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if transformResp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", transformResp.Code)
 	}
@@ -260,6 +284,9 @@ func TestDecideTransformAndReceiptFlow(t *testing.T) {
 	receiptReq := httptest.NewRequest(http.MethodGet, "/v1/receipts/"+decided.ReceiptID, nil)
 	receiptResp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(receiptResp, receiptReq)
+	if ct := receiptResp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
+	}
 	if receiptResp.Code != http.StatusOK {
 		t.Fatalf("expected 200 receipt, got %d", receiptResp.Code)
 	}
@@ -683,6 +710,7 @@ func TestDenyDecision(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
 	server.Handler.ServeHTTP(resp, req)
+	assertJSONContentType(t, resp)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.Code)
 	}
@@ -695,11 +723,12 @@ func TestDenyDecision(t *testing.T) {
 	}
 }
 
-func assertJSONError(t *testing.T, resp *httptest.ResponseRecorder, status int, code string) {
+func assertJSONError(t *testing.T, resp *httptest.ResponseRecorder, status int, code string) models.APIError {
 	t.Helper()
 	if resp.Code != status {
 		t.Fatalf("expected %d, got %d", status, resp.Code)
 	}
+	assertJSONContentType(t, resp)
 	var got struct {
 		Error models.APIError `json:"error"`
 	}
@@ -708,5 +737,26 @@ func assertJSONError(t *testing.T, resp *httptest.ResponseRecorder, status int, 
 	}
 	if got.Error.Code != code {
 		t.Fatalf("expected error code %q, got %q", code, got.Error.Code)
+	}
+	return got.Error
+}
+
+func TestErrorIncludesRequestIDHeader(t *testing.T) {
+	server := makeServer(t)
+	req := httptest.NewRequest(http.MethodPost, "/v1/scan", bytes.NewBufferString(`{"text":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-request-id", "req-123")
+	resp := httptest.NewRecorder()
+	server.Handler.ServeHTTP(resp, req)
+	err := assertJSONError(t, resp, http.StatusBadRequest, "invalid_request")
+	if err.RequestID != "req-123" {
+		t.Fatalf("expected request id header to be echoed, got %q", err.RequestID)
+	}
+}
+
+func assertJSONContentType(t *testing.T, resp *httptest.ResponseRecorder) {
+	t.Helper()
+	if ct := resp.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("expected Content-Type application/json, got %q", ct)
 	}
 }
