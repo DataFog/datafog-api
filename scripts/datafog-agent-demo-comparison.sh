@@ -771,7 +771,7 @@ run_control_policy_outage_probe() {
 			"control" \
 			"policy" \
 			"$probe" \
-			"shimm run --policy-url $fail_url" \
+			"shim run --policy-url $fail_url" \
 			"n/a" \
 			"n/a" \
 			"n/a" \
