@@ -82,7 +82,7 @@ func TestScanTextGoldenCorpus(t *testing.T) {
 		t.Run(vector.Name, func(t *testing.T) {
 			got := ScanText(vector.Text, vector.Filter)
 			if len(got) != len(vector.Findings) {
-				t.Fatalf("expected %d findings, got %d", len(vector.Findings), len(got))
+				t.Fatalf("expected %d findings, got %d: %+v", len(vector.Findings), len(got), got)
 			}
 
 			for idx, exp := range vector.Findings {
@@ -105,7 +105,7 @@ func TestScanTextCorpusIsDeterministicWhenReloadedFromJSON(t *testing.T) {
 			Findings: []FindingExpectation{{
 				EntityType: "credit_card",
 				Start:      5,
-				End:        19,
+				End:        21,
 				Value:      "4111111111111111",
 			}},
 		},
@@ -139,4 +139,169 @@ func TestScanTextNoPanicOnMalformedUTF8(t *testing.T) {
 	}()
 
 	_ = ScanText(malformed, nil)
+}
+
+// --- New entity type tests ---
+
+func TestScanTextDetectsIPAddress(t *testing.T) {
+	text := "server at 192.168.1.1 and gateway 10.0.0.1"
+	findings := ScanText(text, []string{"ip_address"})
+
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 ip_address findings, got %d: %+v", len(findings), findings)
+	}
+	if findings[0].Value != "192.168.1.1" {
+		t.Fatalf("expected 192.168.1.1, got %q", findings[0].Value)
+	}
+	if findings[1].Value != "10.0.0.1" {
+		t.Fatalf("expected 10.0.0.1, got %q", findings[1].Value)
+	}
+}
+
+func TestScanTextRejectsInvalidIPAddress(t *testing.T) {
+	text := "invalid ip 999.999.999.999 should not match"
+	findings := ScanText(text, []string{"ip_address"})
+
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings for invalid IP, got %d: %+v", len(findings), findings)
+	}
+}
+
+func TestScanTextDetectsDate(t *testing.T) {
+	tests := []struct {
+		name  string
+		text  string
+		value string
+	}{
+		{"ISO format", "born on 1990-01-15 in city", "1990-01-15"},
+		{"US slash", "due date 01/15/2025 payment", "01/15/2025"},
+		{"US dash", "due date 01-15-2025 payment", "01-15-2025"},
+		{"Month name", "born on January 15, 2025 in city", "January 15, 2025"},
+		{"Month abbrev", "born on Jan 15, 2025 in city", "Jan 15, 2025"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			findings := ScanText(tt.text, []string{"date"})
+			if len(findings) == 0 {
+				t.Fatalf("expected date finding for %q, got none", tt.text)
+			}
+			found := false
+			for _, f := range findings {
+				if f.Value == tt.value {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Fatalf("expected value %q in findings %+v", tt.value, findings)
+			}
+		})
+	}
+}
+
+func TestScanTextDetectsZipCode(t *testing.T) {
+	text := "address in 90210 or full zip 10001-1234"
+	findings := ScanText(text, []string{"zip_code"})
+
+	if len(findings) != 2 {
+		t.Fatalf("expected 2 zip_code findings, got %d: %+v", len(findings), findings)
+	}
+	if findings[0].Value != "90210" {
+		t.Fatalf("expected 90210, got %q", findings[0].Value)
+	}
+	if findings[1].Value != "10001-1234" {
+		t.Fatalf("expected 10001-1234, got %q", findings[1].Value)
+	}
+}
+
+func TestScanTextCreditCardLuhnValidation(t *testing.T) {
+	// Valid Visa test number (passes Luhn)
+	text := "card 4111111111111111 is valid"
+	findings := ScanText(text, []string{"credit_card"})
+
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 credit_card finding, got %d: %+v", len(findings), findings)
+	}
+	if findings[0].Value != "4111111111111111" {
+		t.Fatalf("expected 4111111111111111, got %q", findings[0].Value)
+	}
+
+	// Invalid number (fails Luhn)
+	textInvalid := "card 1234567890123456 is invalid"
+	findingsInvalid := ScanText(textInvalid, []string{"credit_card"})
+	if len(findingsInvalid) != 0 {
+		t.Fatalf("expected 0 credit_card findings for invalid number, got %d: %+v", len(findingsInvalid), findingsInvalid)
+	}
+}
+
+func TestLuhnValid(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		valid bool
+	}{
+		{"Visa test", "4111111111111111", true},
+		{"Mastercard test", "5500000000000004", true},
+		{"Amex test", "378282246310005", true},
+		{"With spaces", "4111 1111 1111 1111", true},
+		{"With dashes", "4111-1111-1111-1111", true},
+		{"Invalid", "1234567890123456", false},
+		{"Too short", "123", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := luhnValid(tt.input)
+			if got != tt.valid {
+				t.Fatalf("luhnValid(%q) = %v, want %v", tt.input, got, tt.valid)
+			}
+		})
+	}
+}
+
+func TestIPv4Valid(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		valid bool
+	}{
+		{"normal", "192.168.1.1", true},
+		{"zeros", "0.0.0.0", true},
+		{"max", "255.255.255.255", true},
+		{"overflow", "256.1.1.1", false},
+		{"overflow octet 4", "1.1.1.999", false},
+		{"too few octets", "192.168.1", false},
+		{"letters", "abc.def.ghi.jkl", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ipv4Valid(tt.input)
+			if got != tt.valid {
+				t.Fatalf("ipv4Valid(%q) = %v, want %v", tt.input, got, tt.valid)
+			}
+		})
+	}
+}
+
+func TestScanTextAllEntityTypes(t *testing.T) {
+	text := `Contact john@example.com or call 555-123-4567.
+SSN: 123-45-6789. API key: api_key=Abc1234567890123456.
+Card: 4111111111111111. Server: 192.168.1.100.
+Born: 1990-01-15. Zip: 90210.`
+
+	findings := ScanText(text, nil)
+
+	found := map[string]bool{}
+	for _, f := range findings {
+		found[f.EntityType] = true
+	}
+
+	expected := []string{"email", "phone", "ssn", "api_key", "credit_card", "ip_address", "date", "zip_code"}
+	for _, et := range expected {
+		if !found[et] {
+			t.Errorf("expected entity type %q to be detected, found types: %v", et, found)
+		}
+	}
 }

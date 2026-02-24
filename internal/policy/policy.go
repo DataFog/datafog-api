@@ -153,6 +153,9 @@ var defaultEntityTransforms = []models.TransformStep{
 	{EntityType: "ssn", Mode: models.TransformModeAnonymize},
 	{EntityType: "api_key", Mode: models.TransformModeRedact},
 	{EntityType: "credit_card", Mode: models.TransformModeRedact},
+	{EntityType: "ip_address", Mode: models.TransformModeMask},
+	{EntityType: "date", Mode: models.TransformModeMask},
+	{EntityType: "zip_code", Mode: models.TransformModeMask},
 }
 
 var defaultEntityTypes = map[string]struct{}{
@@ -161,6 +164,9 @@ var defaultEntityTypes = map[string]struct{}{
 	"ssn":         {},
 	"api_key":     {},
 	"credit_card": {},
+	"ip_address":  {},
+	"date":        {},
+	"zip_code":    {},
 }
 
 func Evaluate(policy models.Policy, ctx DecisionContext) DecisionResult {
