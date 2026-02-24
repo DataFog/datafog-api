@@ -724,7 +724,7 @@ func (s *Server) respondRaw(w http.ResponseWriter, status int, body []byte) {
 
 func isAllowedTransformMode(mode models.TransformMode) bool {
 	switch mode {
-	case models.TransformModeMask, models.TransformModeTokenize, models.TransformModeAnonymize, models.TransformModeRedact:
+	case models.TransformModeMask, models.TransformModeTokenize, models.TransformModeAnonymize, models.TransformModeRedact, models.TransformModeReplace, models.TransformModeHash:
 		return true
 	default:
 		return false

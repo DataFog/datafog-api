@@ -133,6 +133,8 @@ var allowedModes = map[models.TransformMode]struct{}{
 	models.TransformModeTokenize:  {},
 	models.TransformModeAnonymize: {},
 	models.TransformModeRedact:    {},
+	models.TransformModeReplace:   {},
+	models.TransformModeHash:      {},
 }
 
 type DecisionContext struct {

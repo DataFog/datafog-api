@@ -18,6 +18,8 @@ const (
 	TransformModeTokenize  TransformMode = "tokenize"
 	TransformModeAnonymize TransformMode = "anonymize"
 	TransformModeRedact    TransformMode = "redact"
+	TransformModeReplace   TransformMode = "replace"
+	TransformModeHash      TransformMode = "hash"
 )
 
 type ScanFinding struct {

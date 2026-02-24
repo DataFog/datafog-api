@@ -46,7 +46,8 @@ func ApplyTransforms(input string, findings []models.ScanFinding, steps []models
 		if finding.Start < 0 || finding.End > len(bytes) || finding.Start >= finding.End {
 			continue
 		}
-		replacement := replacementForMode(modeMap[finding.EntityType], finding.Value)
+		mode := modeMap[finding.EntityType]
+		replacement := ReplacementForModeWithType(mode, finding.EntityType, finding.Value)
 		before := bytes[:finding.Start]
 		after := bytes[finding.End:]
 		bytes = append(before, append([]byte(replacement), after...)...)
@@ -76,13 +77,32 @@ func replacementForMode(mode models.TransformMode, value string) string {
 		return "[REDACTED]"
 	case models.TransformModeMask:
 		return strings.Repeat("*", len(value))
+	case models.TransformModeReplace:
+		return "[REPLACED]"
+	case models.TransformModeHash:
+		return deterministicHash(value)
 	default:
 		return "[FILTERED]"
 	}
+}
+
+// ReplacementForModeWithType returns a pseudonymized replacement
+// with entity-type context (e.g., "[PERSON_A1B2C3]").
+func ReplacementForModeWithType(mode models.TransformMode, entityType string, value string) string {
+	if mode == models.TransformModeReplace {
+		prefix := strings.ToUpper(entityType)
+		return "[" + prefix + "_" + deterministicPrefix(value) + "]"
+	}
+	return replacementForMode(mode, value)
 }
 
 func deterministicPrefix(value string) string {
 	hash := sha256.Sum256([]byte(value))
 	encoded := hex.EncodeToString(hash[:])
 	return encoded[:8]
+}
+
+func deterministicHash(value string) string {
+	hash := sha256.Sum256([]byte(value))
+	return hex.EncodeToString(hash[:])
 }
