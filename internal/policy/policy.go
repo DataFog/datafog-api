@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/datafog/datafog-api/internal/adapters"
 	"github.com/datafog/datafog-api/internal/models"
 )
 
@@ -95,6 +96,11 @@ func ValidatePolicy(policy models.Policy) error {
 		for _, arg := range rule.Match.Args {
 			if strings.TrimSpace(arg) == "" {
 				errors = append(errors, fmt.Sprintf("rule %s has empty arg condition", ruleID))
+			}
+		}
+		for _, adapter := range rule.Match.Adapters {
+			if strings.TrimSpace(adapter) == "" {
+				errors = append(errors, fmt.Sprintf("rule %s has empty adapter condition", ruleID))
 			}
 		}
 		for _, requirement := range rule.EntityRequirements {
@@ -291,6 +297,9 @@ func matchAction(match models.MatchCriteria, requireSensitiveOnly bool, action m
 		return false
 	}
 	if !matchesArgs(match.Args, action.Args) {
+		return false
+	}
+	if !adapters.MatchesAdapter(action.Tool, match.Adapters) {
 		return false
 	}
 	if requireSensitiveOnly && !action.Sensitive {

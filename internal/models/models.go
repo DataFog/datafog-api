@@ -164,6 +164,7 @@ type MatchCriteria struct {
 	ResourcePrefix []string `json:"resource_prefixes,omitempty"`
 	Commands       []string `json:"commands,omitempty"`
 	Args           []string `json:"args,omitempty"`
+	Adapters       []string `json:"adapters,omitempty"`
 }
 
 type Rule struct {
