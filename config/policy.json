@@ -1,8 +1,8 @@
 {
   "policy_id": "datafog-mvp",
-  "policy_version": "v2026-02-23-1",
-  "description": "MVP policy with deterministic action + entity gating",
-  "updated_at": "2026-02-23T00:00:00Z",
+  "policy_version": "v2026-02-24-1",
+  "description": "MVP policy with action + entity gating and platform adapter rules",
+  "updated_at": "2026-02-24T00:00:00Z",
   "rules": [
     {
       "id": "deny-shell-api-key",
@@ -13,6 +13,39 @@
         "action_types": ["shell.exec"]
       },
       "entity_requirements": ["api_key"]
+    },
+    {
+      "id": "allow-claude-help",
+      "description": "Allow claude help command",
+      "priority": 100,
+      "effect": "allow",
+      "match": {
+        "action_types": ["command.exec"],
+        "adapters": ["claude"],
+        "commands": ["--help"]
+      }
+    },
+    {
+      "id": "allow-codex-help",
+      "description": "Allow codex help command",
+      "priority": 100,
+      "effect": "allow",
+      "match": {
+        "action_types": ["command.exec"],
+        "adapters": ["codex"],
+        "commands": ["--help"]
+      }
+    },
+    {
+      "id": "deny-agent-shell-exec",
+      "description": "Block shell-style invocation from AI agent adapters",
+      "priority": 90,
+      "effect": "deny",
+      "match": {
+        "action_types": ["command.exec"],
+        "adapters": ["claude", "codex"],
+        "commands": ["-lc"]
+      }
     },
     {
       "id": "transform-sensitive-file-write",
