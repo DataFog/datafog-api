@@ -1,10 +1,12 @@
 package shim
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -30,6 +32,20 @@ type DecisionEvent struct {
 
 type DecisionEventSink interface {
 	Record(event DecisionEvent)
+}
+
+// EventQuery allows filtering events by time range, decision type, and adapter.
+type EventQuery struct {
+	After    *time.Time
+	Before   *time.Time
+	Decision string
+	Adapter  string
+	Limit    int
+}
+
+// EventReader reads stored events with optional filtering.
+type EventReader interface {
+	Query(q EventQuery) ([]DecisionEvent, error)
 }
 
 type noopEventSink struct{}
@@ -69,4 +85,58 @@ func (s *NDJSONDecisionEventSink) Record(event DecisionEvent) {
 	defer file.Close()
 
 	_, _ = fmt.Fprintln(file, string(payload))
+}
+
+// Query reads events from the NDJSON file and applies filters.
+func (s *NDJSONDecisionEventSink) Query(q EventQuery) ([]DecisionEvent, error) {
+	if s == nil || s.path == "" {
+		return nil, nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	f, err := os.Open(s.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+
+	var events []DecisionEvent
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		var event DecisionEvent
+		if err := json.Unmarshal([]byte(line), &event); err != nil {
+			continue
+		}
+
+		if q.After != nil && event.Timestamp.Before(*q.After) {
+			continue
+		}
+		if q.Before != nil && event.Timestamp.After(*q.Before) {
+			continue
+		}
+		if q.Decision != "" && !strings.EqualFold(event.Decision, q.Decision) {
+			continue
+		}
+		if q.Adapter != "" && !strings.EqualFold(event.Tool, q.Adapter) {
+			continue
+		}
+
+		events = append(events, event)
+		if q.Limit > 0 && len(events) >= q.Limit {
+			break
+		}
+	}
+
+	return events, scanner.Err()
 }

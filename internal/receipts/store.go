@@ -21,12 +21,22 @@ const defaultReceiptFileMode = 0o600
 const defaultReceiptDirMode = 0o750
 
 type ReceiptStore struct {
-	mu       sync.RWMutex
-	filePath string
-	receipts map[string]models.Receipt
+	mu          sync.RWMutex
+	filePath    string
+	receipts    map[string]models.Receipt
+	maxEntries  int
+	entryCount  int
 }
 
-func NewReceiptStore(filePath string) (*ReceiptStore, error) {
+// MaxEntries sets the maximum number of receipts before rotation.
+// 0 means no limit (default).
+func MaxEntries(n int) func(*ReceiptStore) {
+	return func(s *ReceiptStore) {
+		s.maxEntries = n
+	}
+}
+
+func NewReceiptStore(filePath string, opts ...func(*ReceiptStore)) (*ReceiptStore, error) {
 	if filePath == "" {
 		filePath = "datafog_receipts.jsonl"
 	}
@@ -44,6 +54,9 @@ func NewReceiptStore(filePath string) (*ReceiptStore, error) {
 	store := &ReceiptStore{
 		filePath: filePath,
 		receipts: map[string]models.Receipt{},
+	}
+	for _, opt := range opts {
+		opt(store)
 	}
 	f, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDONLY, defaultReceiptFileMode) // #nosec G304 -- receipt path is validated from startup configuration.
 	if err != nil {
@@ -84,6 +97,13 @@ func (s *ReceiptStore) Save(receipt models.Receipt) (models.Receipt, error) {
 		receipt.ReceiptID = newID()
 	}
 
+	// Rotate if we've hit the max
+	if s.maxEntries > 0 && s.entryCount >= s.maxEntries {
+		if err := s.rotateLocked(); err != nil {
+			return models.Receipt{}, fmt.Errorf("receipt rotation failed: %w", err)
+		}
+	}
+
 	data, err := json.Marshal(receipt)
 	if err != nil {
 		return models.Receipt{}, err
@@ -103,7 +123,27 @@ func (s *ReceiptStore) Save(receipt models.Receipt) (models.Receipt, error) {
 	}
 
 	s.receipts[receipt.ReceiptID] = receipt
+	s.entryCount++
 	return receipt, nil
+}
+
+// rotateLocked archives the current receipts file and starts fresh.
+// Must be called with s.mu held.
+func (s *ReceiptStore) rotateLocked() error {
+	archivePath := s.filePath + "." + time.Now().UTC().Format("20060102T150405Z")
+	if err := os.Rename(s.filePath, archivePath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	s.receipts = map[string]models.Receipt{}
+	s.entryCount = 0
+	return nil
+}
+
+// Count returns the number of receipts in memory.
+func (s *ReceiptStore) Count() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.receipts)
 }
 
 func (s *ReceiptStore) loadExistingReceipts() error {
@@ -125,6 +165,7 @@ func (s *ReceiptStore) loadExistingReceipts() error {
 			return fmt.Errorf("decode existing receipt: %w", err)
 		}
 		s.receipts[receipt.ReceiptID] = receipt
+		s.entryCount++
 	}
 	if err := scanner.Err(); err != nil {
 		return err

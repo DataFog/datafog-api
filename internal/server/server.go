@@ -22,12 +22,14 @@ import (
 	"github.com/datafog/datafog-api/internal/policy"
 	"github.com/datafog/datafog-api/internal/receipts"
 	"github.com/datafog/datafog-api/internal/scan"
+	"github.com/datafog/datafog-api/internal/shim"
 	"github.com/datafog/datafog-api/internal/transform"
 )
 
 type Server struct {
 	policy      models.Policy
 	store       *receipts.ReceiptStore
+	eventReader shim.EventReader
 	apiToken    string
 	rateLimiter *tokenBucket
 	startedAt   time.Time
@@ -110,6 +112,10 @@ func New(policyData models.Policy, store *receipts.ReceiptStore, logger *log.Log
 	}
 }
 
+func (s *Server) SetEventReader(reader shim.EventReader) {
+	s.eventReader = reader
+}
+
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
@@ -119,6 +125,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/transform", s.handleTransform)
 	mux.HandleFunc("/v1/anonymize", s.handleAnonymize)
 	mux.HandleFunc("/v1/receipts/", s.handleReceipt)
+	mux.HandleFunc("/v1/events", s.handleEvents)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
@@ -647,6 +654,50 @@ func (s *Server) handleAnonymize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.respond(w, http.StatusOK, res)
+}
+
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		s.respondError(w, http.StatusMethodNotAllowed, models.APIError{Code: "method_not_allowed", Message: "method must be GET", RequestID: requestID(r)})
+		return
+	}
+	if s.eventReader == nil {
+		s.respond(w, http.StatusOK, map[string]interface{}{"events": []shim.DecisionEvent{}, "total": 0})
+		return
+	}
+
+	q := shim.EventQuery{Limit: 100}
+	if after := r.URL.Query().Get("after"); after != "" {
+		if t, err := time.Parse(time.RFC3339, after); err == nil {
+			q.After = &t
+		}
+	}
+	if before := r.URL.Query().Get("before"); before != "" {
+		if t, err := time.Parse(time.RFC3339, before); err == nil {
+			q.Before = &t
+		}
+	}
+	if decision := r.URL.Query().Get("decision"); decision != "" {
+		q.Decision = decision
+	}
+	if adapter := r.URL.Query().Get("adapter"); adapter != "" {
+		q.Adapter = adapter
+	}
+	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
+		if n, err := strconv.Atoi(limitStr); err == nil && n > 0 && n <= 1000 {
+			q.Limit = n
+		}
+	}
+
+	events, err := s.eventReader.Query(q)
+	if err != nil {
+		s.respondError(w, http.StatusInternalServerError, models.APIError{Code: "events_read_error", Message: err.Error(), RequestID: requestID(r)})
+		return
+	}
+	if events == nil {
+		events = []shim.DecisionEvent{}
+	}
+	s.respond(w, http.StatusOK, map[string]interface{}{"events": events, "total": len(events)})
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
