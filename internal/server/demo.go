@@ -21,6 +21,7 @@ type DemoHandler struct {
 	gate       *shim.Gate
 	sandboxDir string
 	server     *Server
+	demoHTML   []byte
 }
 
 type demoExecRequest struct {
@@ -70,15 +71,23 @@ type demoReadResponse struct {
 
 // NewDemoHandler creates a demo handler backed by the given gate.
 // It creates a sandbox directory for file operations.
-func NewDemoHandler(gate *shim.Gate, srv *Server) (*DemoHandler, error) {
+func NewDemoHandler(gate *shim.Gate, srv *Server, demoHTMLPath string) (*DemoHandler, error) {
 	sandboxDir, err := os.MkdirTemp("", "datafog-demo-*")
 	if err != nil {
 		return nil, fmt.Errorf("create demo sandbox: %w", err)
+	}
+	var html []byte
+	if demoHTMLPath != "" {
+		html, err = os.ReadFile(demoHTMLPath)
+		if err != nil {
+			return nil, fmt.Errorf("read demo HTML: %w", err)
+		}
 	}
 	return &DemoHandler{
 		gate:       gate,
 		sandboxDir: sandboxDir,
 		server:     srv,
+		demoHTML:   html,
 	}, nil
 }
 
@@ -91,10 +100,17 @@ func (d *DemoHandler) Cleanup() {
 
 // Register adds the demo endpoints to the given mux.
 func (d *DemoHandler) Register(mux *http.ServeMux) {
+	mux.HandleFunc("/demo", d.handleDemoPage)
 	mux.HandleFunc("/demo/exec", d.handleExec)
 	mux.HandleFunc("/demo/write-file", d.handleWriteFile)
 	mux.HandleFunc("/demo/read-file", d.handleReadFile)
+	mux.HandleFunc("/demo/seed", d.handleSeed)
 	mux.HandleFunc("/demo/sandbox", d.handleSandboxInfo)
+}
+
+func (d *DemoHandler) handleDemoPage(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(d.demoHTML)
 }
 
 func (d *DemoHandler) handleExec(w http.ResponseWriter, r *http.Request) {
@@ -235,6 +251,39 @@ func (d *DemoHandler) handleReadFile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d.server.respond(w, http.StatusOK, resp)
+}
+
+// handleSeed writes a file directly to the sandbox, bypassing the shim gate.
+// This lets demo scenarios place raw PII on disk so that a subsequent
+// gated read can demonstrate redaction on the way out.
+func (d *DemoHandler) handleSeed(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		d.server.respondError(w, http.StatusMethodNotAllowed, models.APIError{Code: "method_not_allowed", Message: "method must be POST"})
+		return
+	}
+
+	var req demoWriteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		d.server.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: err.Error()})
+		return
+	}
+	if req.Filename == "" || req.Content == "" {
+		d.server.respondError(w, http.StatusBadRequest, models.APIError{Code: "invalid_request", Message: "filename and content are required"})
+		return
+	}
+
+	cleanName := filepath.Base(req.Filename)
+	fullPath := filepath.Join(d.sandboxDir, cleanName)
+
+	if err := os.WriteFile(fullPath, []byte(req.Content), 0o600); err != nil {
+		d.server.respondError(w, http.StatusInternalServerError, models.APIError{Code: "seed_error", Message: err.Error()})
+		return
+	}
+
+	d.server.respond(w, http.StatusOK, map[string]interface{}{
+		"seeded":   true,
+		"filename": cleanName,
+	})
 }
 
 func (d *DemoHandler) handleSandboxInfo(w http.ResponseWriter, r *http.Request) {

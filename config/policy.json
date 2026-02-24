@@ -1,6 +1,6 @@
 {
   "policy_id": "datafog-mvp",
-  "policy_version": "v2026-02-24-1",
+  "policy_version": "v2026-02-24-2",
   "description": "MVP policy with action + entity gating and platform adapter rules",
   "updated_at": "2026-02-24T00:00:00Z",
   "rules": [
@@ -48,22 +48,30 @@
       }
     },
     {
-      "id": "transform-sensitive-file-write",
-      "description": "Redact sensitive entities before file writes",
+      "id": "redact-file-write",
+      "description": "Redact PII before writing files",
       "priority": 80,
       "effect": "allow_with_redaction",
       "match": {
-        "action_types": ["file.write", "http.request", "shell.exec"]
-      },
-      "entity_requirements": ["email", "phone", "ssn", "api_key", "credit_card"]
+        "action_types": ["file.write"]
+      }
     },
     {
-      "id": "allow-file-read",
-      "description": "Allow reads from files",
-      "priority": 40,
-      "effect": "allow",
+      "id": "redact-file-read",
+      "description": "Redact PII when reading files",
+      "priority": 80,
+      "effect": "allow_with_redaction",
       "match": {
         "action_types": ["file.read"]
+      }
+    },
+    {
+      "id": "allow-shell",
+      "description": "Allow shell commands when no dangerous entities detected",
+      "priority": 10,
+      "effect": "allow",
+      "match": {
+        "action_types": ["shell.exec"]
       }
     },
     {

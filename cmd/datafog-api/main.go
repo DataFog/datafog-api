@@ -49,7 +49,8 @@ func main() {
 		client := shim.NewHTTPDecisionClient("http://127.0.0.1"+addr, apiToken)
 		gate := shim.NewGate(client, shim.WithEventSink(eventSink))
 
-		demo, err := server.NewDemoHandler(gate, h)
+		demoHTMLPath := getenv("DATAFOG_DEMO_HTML", "docs/demo.html")
+		demo, err := server.NewDemoHandler(gate, h, demoHTMLPath)
 		if err != nil {
 			log.Fatalf("init demo: %v", err)
 		}
