@@ -99,7 +99,7 @@ var commonFirstNames = map[string]bool{
 
 // wellKnownLocations covers major cities and countries.
 var wellKnownLocations = map[string]bool{
-	"new york":      true, "los angeles": true, "chicago": true,
+	"new york": true, "los angeles": true, "chicago": true,
 	"houston": true, "phoenix": true, "philadelphia": true,
 	"san antonio": true, "san diego": true, "dallas": true,
 	"san jose": true, "san francisco": true, "seattle": true,

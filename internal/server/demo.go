@@ -30,13 +30,13 @@ type demoExecRequest struct {
 }
 
 type demoExecResponse struct {
-	Decision  models.DecideResponse `json:"decision"`
-	Stdout    string                `json:"stdout"`
-	Stderr    string                `json:"stderr"`
-	Error     string                `json:"error,omitempty"`
-	Blocked   bool                  `json:"blocked"`
-	TimingMs  int64                 `json:"timing_ms"`
-	Findings  []models.ScanFinding  `json:"findings,omitempty"`
+	Decision models.DecideResponse `json:"decision"`
+	Stdout   string                `json:"stdout"`
+	Stderr   string                `json:"stderr"`
+	Error    string                `json:"error,omitempty"`
+	Blocked  bool                  `json:"blocked"`
+	TimingMs int64                 `json:"timing_ms"`
+	Findings []models.ScanFinding  `json:"findings,omitempty"`
 }
 
 type demoWriteRequest struct {

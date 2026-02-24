@@ -116,7 +116,8 @@ func (s *Server) SetEventReader(reader shim.EventReader) {
 	s.eventReader = reader
 }
 
-func (s *Server) Handler() http.Handler {
+// HandlerWithDemo returns the HTTP handler with optional demo endpoints registered.
+func (s *Server) HandlerWithDemo(demo *DemoHandler) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/v1/policy/version", s.handlePolicyVersion)
@@ -127,6 +128,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/receipts/", s.handleReceipt)
 	mux.HandleFunc("/v1/events", s.handleEvents)
 	mux.HandleFunc("/metrics", s.handleMetrics)
+	if demo != nil {
+		demo.Register(mux)
+	}
+	return s.wrapMiddleware(mux)
+}
+
+func (s *Server) Handler() http.Handler {
+	return s.HandlerWithDemo(nil)
+}
+
+func (s *Server) wrapMiddleware(mux *http.ServeMux) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		if origin != "" {

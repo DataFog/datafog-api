@@ -21,11 +21,11 @@ const defaultReceiptFileMode = 0o600
 const defaultReceiptDirMode = 0o750
 
 type ReceiptStore struct {
-	mu          sync.RWMutex
-	filePath    string
-	receipts    map[string]models.Receipt
-	maxEntries  int
-	entryCount  int
+	mu         sync.RWMutex
+	filePath   string
+	receipts   map[string]models.Receipt
+	maxEntries int
+	entryCount int
 }
 
 // MaxEntries sets the maximum number of receipts before rotation.
