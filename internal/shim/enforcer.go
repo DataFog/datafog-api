@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"github.com/datafog/datafog-api/internal/models"
+	"github.com/datafog/datafog-api/internal/scan"
+	"github.com/datafog/datafog-api/internal/transform"
 )
 
 type CommandRunner interface {
@@ -201,9 +203,19 @@ func (r *Gate) ReadFile(ctx context.Context, path string, text string, findings 
 		Resource:  path,
 		Sensitive: sensitive,
 	}
-	return r.executeRequest(ctx, r.readRequest(action, text, findings), func(ctx context.Context) ([]byte, error) {
+	result, output, err := r.executeRequest(ctx, r.readRequest(action, text, findings), func(ctx context.Context) ([]byte, error) {
 		return r.Reader.ReadFile(path)
 	})
+	if err != nil {
+		return result, output, err
+	}
+
+	// Apply redaction to read output when decision is allow_with_redaction
+	if result.Decision == models.DecisionAllowWithRedaction && len(result.TransformPlan) > 0 && output != nil {
+		output = r.applyRedaction(output, result.TransformPlan, nil)
+	}
+
+	return result, output, nil
 }
 
 func (r *Gate) WriteFile(ctx context.Context, path string, data []byte, perm fs.FileMode, text string, findings []models.ScanFinding, sensitive bool) (models.DecideResponse, error) {
@@ -216,13 +228,35 @@ func (r *Gate) WriteFile(ctx context.Context, path string, data []byte, perm fs.
 		Resource:  path,
 		Sensitive: sensitive,
 	}
-	response, _, writeErr := r.executeRequest(ctx, r.readRequest(action, text, findings), func(ctx context.Context) ([]byte, error) {
-		return nil, r.Writer.WriteFile(path, data, perm)
-	})
-	if writeErr != nil {
-		return response, writeErr
+	req := r.readRequest(action, text, findings)
+	result, err := r.Check(ctx, req)
+	if err != nil {
+		if r.Mode == ModeEnforced {
+			r.recordDecisionEvent(req, result, false, err)
+			return result, err
+		}
+		fallback := models.DecideResponse{
+			Decision:  models.DecisionAllow,
+			Reason:    err.Error(),
+			RequestID: req.RequestID,
+			TraceID:   req.TraceID,
+		}
+		r.recordDecisionEvent(req, fallback, true, err)
+		return fallback, r.Writer.WriteFile(path, data, perm)
 	}
-	return response, nil
+	if !r.shouldAllow(result.Decision) {
+		r.recordDecisionEvent(req, result, false, nil)
+		return result, &PolicyDecisionError{Response: result}
+	}
+
+	// Apply transform plan on allow_with_redaction
+	writeData := data
+	if result.Decision == models.DecisionAllowWithRedaction && len(result.TransformPlan) > 0 {
+		writeData = r.applyRedaction(data, result.TransformPlan, findings)
+	}
+
+	r.recordDecisionEvent(req, result, true, nil)
+	return result, r.Writer.WriteFile(path, writeData, perm)
 }
 
 func (r *Gate) ExecuteCommand(ctx context.Context, adapterName string, target string, args []string, text string, findings []models.ScanFinding, sensitive bool) (models.DecideResponse, []byte, error) {
@@ -273,6 +307,20 @@ func (r *Gate) recordDecisionEvent(req models.DecideRequest, decision models.Dec
 		RequestID:  req.RequestID,
 		TraceID:    req.TraceID,
 	})
+}
+
+// applyRedaction scans the content for PII and applies the transform plan.
+// If findings are provided, they are used directly; otherwise the content is scanned.
+func (r *Gate) applyRedaction(data []byte, plan []models.TransformStep, findings []models.ScanFinding) []byte {
+	text := string(data)
+	if len(findings) == 0 {
+		findings = scan.ScanText(text, nil)
+	}
+	if len(findings) == 0 {
+		return data
+	}
+	output, _ := transform.ApplyTransforms(text, findings, plan)
+	return []byte(output)
 }
 
 func errorString(err error) string {

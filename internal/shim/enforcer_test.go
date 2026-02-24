@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/datafog/datafog-api/internal/models"
@@ -298,5 +299,73 @@ func TestWriteFileAllowed(t *testing.T) {
 	}
 	if writer.perm != 0o600 {
 		t.Fatalf("expected perm 600, got %v", writer.perm)
+	}
+}
+
+func TestWriteFileRedactsOnAllowWithRedaction(t *testing.T) {
+	decider := &fakeDecisionClient{
+		response: models.DecideResponse{
+			Decision: models.DecisionAllowWithRedaction,
+			TransformPlan: []models.TransformStep{
+				{EntityType: "email", Mode: models.TransformModeRedact},
+			},
+		},
+	}
+	writer := &fakeFileWriter{}
+	interceptor := &Gate{
+		Client: decider,
+		Writer: writer,
+	}
+
+	data := []byte("contact alice@example.com for info")
+	findings := []models.ScanFinding{
+		{EntityType: "email", Value: "alice@example.com", Start: 8, End: 25, Confidence: 0.99},
+	}
+
+	res, err := interceptor.WriteFile(context.Background(), "/tmp/out.txt", data, 0o600, string(data), findings, true)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res.Decision != models.DecisionAllowWithRedaction {
+		t.Fatalf("expected allow_with_redaction, got %q", res.Decision)
+	}
+	// The written data should have the email redacted
+	if strings.Contains(string(writer.data), "alice@example.com") {
+		t.Fatalf("expected email to be redacted in written data, got %q", string(writer.data))
+	}
+	if !strings.Contains(string(writer.data), "[REDACTED]") {
+		t.Fatalf("expected [REDACTED] in written data, got %q", string(writer.data))
+	}
+}
+
+func TestReadFileRedactsOnAllowWithRedaction(t *testing.T) {
+	fileContent := "user email is bob@example.com"
+	decider := &fakeDecisionClient{
+		response: models.DecideResponse{
+			Decision: models.DecisionAllowWithRedaction,
+			TransformPlan: []models.TransformStep{
+				{EntityType: "email", Mode: models.TransformModeRedact},
+			},
+		},
+	}
+	reader := &fakeFileReader{data: []byte(fileContent)}
+	interceptor := &Gate{
+		Client: decider,
+		Reader: reader,
+	}
+
+	res, output, err := interceptor.ReadFile(context.Background(), "/tmp/data.txt", "", nil, false)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if res.Decision != models.DecisionAllowWithRedaction {
+		t.Fatalf("expected allow_with_redaction, got %q", res.Decision)
+	}
+	// The output should have the email redacted
+	if strings.Contains(string(output), "bob@example.com") {
+		t.Fatalf("expected email to be redacted in output, got %q", string(output))
+	}
+	if !strings.Contains(string(output), "[REDACTED]") {
+		t.Fatalf("expected [REDACTED] in output, got %q", string(output))
 	}
 }
