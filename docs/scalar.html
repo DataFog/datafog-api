@@ -1,0 +1,397 @@
+<!doctype html>
+<html>
+<head>
+  <title>DataFog API Reference</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+</head>
+<body>
+  <script id="api-reference" type="application/json">
+  {
+    "openapi": "3.1.0",
+    "info": {
+      "title": "DataFog API",
+      "version": "v1",
+      "description": "Policy-driven data security API for scanning, deciding, transforming, and anonymizing sensitive data."
+    },
+    "servers": [
+      { "url": "http://localhost:8080", "description": "Local development" }
+    ],
+    "paths": {
+      "/health": {
+        "get": {
+          "summary": "Health check",
+          "operationId": "getHealth",
+          "tags": ["System"],
+          "responses": {
+            "200": {
+              "description": "Service is healthy",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "status": { "type": "string", "example": "ok" },
+                      "policy_id": { "type": "string" },
+                      "policy_version": { "type": "string" },
+                      "started_at": { "type": "string", "format": "date-time" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/policy/version": {
+        "get": {
+          "summary": "Get policy version",
+          "operationId": "getPolicyVersion",
+          "tags": ["Policy"],
+          "responses": {
+            "200": {
+              "description": "Current policy identity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "policy_id": { "type": "string" },
+                      "policy_version": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/metrics": {
+        "get": {
+          "summary": "Service metrics",
+          "operationId": "getMetrics",
+          "tags": ["System"],
+          "responses": {
+            "200": {
+              "description": "Service telemetry",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "total_requests": { "type": "integer" },
+                      "error_requests": { "type": "integer" },
+                      "by_status": { "type": "object", "additionalProperties": { "type": "integer" } },
+                      "by_path": { "type": "object", "additionalProperties": { "type": "integer" } },
+                      "by_method": { "type": "object", "additionalProperties": { "type": "integer" } },
+                      "started_at": { "type": "string", "format": "date-time" },
+                      "uptime_seconds": { "type": "number" }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/scan": {
+        "post": {
+          "summary": "Scan text for PII entities",
+          "operationId": "scanText",
+          "tags": ["Scan"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "text": { "type": "string", "description": "Text to scan for sensitive entities" },
+                    "entity_types": { "type": "array", "items": { "type": "string" }, "description": "Optional filter for entity types" },
+                    "request_id": { "type": "string" },
+                    "trace_id": { "type": "string" },
+                    "idempotency_key": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "text": "My email is john@example.com and my SSN is 123-45-6789"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Scan findings",
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/ScanResponse" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/decide": {
+        "post": {
+          "summary": "Make a policy enforcement decision",
+          "operationId": "decide",
+          "tags": ["Decide"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["action"],
+                  "properties": {
+                    "action": { "$ref": "#/components/schemas/ActionMeta" },
+                    "text": { "type": "string", "description": "Input text (scanned if no findings provided)" },
+                    "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } },
+                    "request_id": { "type": "string" },
+                    "trace_id": { "type": "string" },
+                    "tenant_id": { "type": "string" },
+                    "actor_id": { "type": "string" },
+                    "session_id": { "type": "string" },
+                    "idempotency_key": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "action": { "type": "shell", "tool": "git", "command": "push" },
+                  "text": "API key: sk-abc123xyz"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Policy decision",
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/DecideResponse" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/transform": {
+        "post": {
+          "summary": "Transform text with per-entity modes",
+          "operationId": "transformText",
+          "tags": ["Transform"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "text": { "type": "string" },
+                    "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } },
+                    "mode": { "type": "string", "enum": ["mask", "tokenize", "anonymize", "redact"] },
+                    "entity_modes": { "type": "object", "additionalProperties": { "type": "string", "enum": ["mask", "tokenize", "anonymize", "redact"] } },
+                    "request_id": { "type": "string" },
+                    "trace_id": { "type": "string" },
+                    "idempotency_key": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "text": "Contact me at john@example.com or 555-123-4567",
+                  "mode": "mask"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Transformed text",
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TransformResponse" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/anonymize": {
+        "post": {
+          "summary": "Anonymize all detected entities",
+          "operationId": "anonymizeText",
+          "tags": ["Transform"],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["text"],
+                  "properties": {
+                    "text": { "type": "string" },
+                    "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } },
+                    "request_id": { "type": "string" },
+                    "trace_id": { "type": "string" },
+                    "idempotency_key": { "type": "string" }
+                  }
+                },
+                "example": {
+                  "text": "My email is john@example.com and my SSN is 123-45-6789"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Anonymized text",
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/TransformResponse" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/receipts/{id}": {
+        "get": {
+          "summary": "Get decision receipt by ID",
+          "operationId": "getReceipt",
+          "tags": ["Receipts"],
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": { "type": "string" }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Decision receipt",
+              "content": {
+                "application/json": {
+                  "schema": { "$ref": "#/components/schemas/Receipt" }
+                }
+              }
+            },
+            "404": { "description": "Receipt not found" }
+          }
+        }
+      }
+    },
+    "components": {
+      "schemas": {
+        "Finding": {
+          "type": "object",
+          "properties": {
+            "entity_type": { "type": "string", "enum": ["email", "phone", "ssn", "api_key", "credit_card"] },
+            "value": { "type": "string" },
+            "start": { "type": "integer" },
+            "end": { "type": "integer" },
+            "confidence": { "type": "number" }
+          }
+        },
+        "ActionMeta": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": { "type": "string" },
+            "tool": { "type": "string" },
+            "resource": { "type": "string" },
+            "command": { "type": "string" },
+            "args": { "type": "array", "items": { "type": "string" } },
+            "sensitive": { "type": "boolean", "default": false }
+          }
+        },
+        "ScanResponse": {
+          "type": "object",
+          "properties": {
+            "request_id": { "type": "string" },
+            "trace_id": { "type": "string" },
+            "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } },
+            "policy_version": { "type": "string" },
+            "policy_id": { "type": "string" }
+          }
+        },
+        "DecideResponse": {
+          "type": "object",
+          "properties": {
+            "request_id": { "type": "string" },
+            "trace_id": { "type": "string" },
+            "decision": { "type": "string", "enum": ["allow", "allow_with_redaction", "transform", "deny"] },
+            "receipt_id": { "type": "string" },
+            "policy_version": { "type": "string" },
+            "policy_id": { "type": "string" },
+            "matched_rules": { "type": "array", "items": { "type": "string" } },
+            "transform_plan": { "type": "array", "items": { "$ref": "#/components/schemas/TransformStep" } },
+            "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } },
+            "reason": { "type": "string" }
+          }
+        },
+        "TransformStep": {
+          "type": "object",
+          "properties": {
+            "entity_type": { "type": "string" },
+            "mode": { "type": "string", "enum": ["mask", "tokenize", "anonymize", "redact"] }
+          }
+        },
+        "TransformResponse": {
+          "type": "object",
+          "properties": {
+            "request_id": { "type": "string" },
+            "trace_id": { "type": "string" },
+            "output": { "type": "string" },
+            "policy_id": { "type": "string" },
+            "policy_version": { "type": "string" },
+            "stats": {
+              "type": "object",
+              "properties": {
+                "entities_transformed": { "type": "integer" },
+                "modes_applied": { "type": "string" }
+              }
+            }
+          }
+        },
+        "Receipt": {
+          "type": "object",
+          "properties": {
+            "receipt_id": { "type": "string" },
+            "timestamp": { "type": "string", "format": "date-time" },
+            "request_id": { "type": "string" },
+            "trace_id": { "type": "string" },
+            "tenant_id": { "type": "string" },
+            "actor_id": { "type": "string" },
+            "session_id": { "type": "string" },
+            "policy_version": { "type": "string" },
+            "policy_id": { "type": "string" },
+            "action_hash": { "type": "string" },
+            "input_hash": { "type": "string" },
+            "sanitized_summary": { "type": "string" },
+            "decision": { "type": "string" },
+            "action": { "$ref": "#/components/schemas/ActionMeta" },
+            "matched_rules": { "type": "array", "items": { "type": "string" } },
+            "findings": { "type": "array", "items": { "$ref": "#/components/schemas/Finding" } },
+            "transform_plan": { "type": "array", "items": { "$ref": "#/components/schemas/TransformStep" } },
+            "reason": { "type": "string" }
+          }
+        }
+      },
+      "securitySchemes": {
+        "BearerAuth": {
+          "type": "http",
+          "scheme": "bearer"
+        },
+        "ApiKeyAuth": {
+          "type": "apiKey",
+          "in": "header",
+          "name": "X-API-Key"
+        }
+      }
+    }
+  }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+</body>
+</html>

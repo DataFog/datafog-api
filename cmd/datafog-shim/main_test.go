@@ -77,7 +77,11 @@ func TestResolveTargetBinary(t *testing.T) {
 
 	t.Run("pathLookup", func(t *testing.T) {
 		path := t.TempDir()
-		commandBin := filepath.Join(path, "lookupme")
+		name := "lookupme"
+		if runtime.GOOS == "windows" {
+			name += ".exe"
+		}
+		commandBin := filepath.Join(path, name)
 		if err := os.WriteFile(commandBin, []byte(""), 0o755); err != nil {
 			t.Fatalf("write path command: %v", err)
 		}
