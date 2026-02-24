@@ -134,18 +134,118 @@ LAST_DECISION="n/a"
 LAST_RECEIPT="n/a"
 LAST_STDOUT="n/a"
 LAST_STDERR="n/a"
-declare -A RESULT_EXIT
-declare -A RESULT_DECISION
-declare -A RESULT_RECEIPT
-declare -A RESULT_NOTES
-declare -A RESULT_OUTCOME
-declare -A RESULT_COMMAND
+
+RESULT_KEYS=()
+RESULT_EXIT=()
+RESULT_DECISION=()
+RESULT_RECEIPT=()
+RESULT_NOTES=()
+RESULT_OUTCOME=()
+RESULT_COMMAND=()
+
+result_index_for_key() {
+	local key="$1"
+	local i
+
+	for i in "${!RESULT_KEYS[@]}"; do
+		if [[ "${RESULT_KEYS[$i]}" == "$key" ]]; then
+			echo "$i"
+			return 0
+		fi
+	done
+	echo "-1"
+	return 1
+}
+
+result_get() {
+	local key="$1"
+	local field="$2"
+	local default="${3:-}"
+	local idx
+
+	idx="$(result_index_for_key "$key" || true)"
+	if [[ -z "$idx" || "$idx" == "-1" ]]; then
+		echo "$default"
+		return 0
+	fi
+
+	case "$field" in
+		exit)
+			echo "${RESULT_EXIT[$idx]:-$default}"
+			;;
+		decision)
+			echo "${RESULT_DECISION[$idx]:-$default}"
+			;;
+		receipt)
+			echo "${RESULT_RECEIPT[$idx]:-$default}"
+			;;
+		notes)
+			echo "${RESULT_NOTES[$idx]:-$default}"
+			;;
+		outcome)
+			echo "${RESULT_OUTCOME[$idx]:-$default}"
+			;;
+		command)
+			echo "${RESULT_COMMAND[$idx]:-$default}"
+			;;
+		*)
+			echo "$default"
+			;;
+	esac
+}
+
+result_set() {
+	local key="$1"
+	local field="$2"
+	local value="$3"
+	local idx
+
+	idx="$(result_index_for_key "$key" || true)"
+	if [[ -z "$idx" || "$idx" == "-1" ]]; then
+		idx="${#RESULT_KEYS[@]}"
+		RESULT_KEYS+=("$key")
+		RESULT_EXIT+=("")
+		RESULT_DECISION+=("")
+		RESULT_RECEIPT+=("")
+		RESULT_NOTES+=("")
+		RESULT_OUTCOME+=("")
+		RESULT_COMMAND+=("")
+	fi
+	case "$field" in
+		exit)
+			RESULT_EXIT[$idx]="$value"
+			;;
+		decision)
+			RESULT_DECISION[$idx]="$value"
+			;;
+		receipt)
+			RESULT_RECEIPT[$idx]="$value"
+			;;
+		notes)
+			RESULT_NOTES[$idx]="$value"
+			;;
+		command)
+			RESULT_COMMAND[$idx]="$value"
+			;;
+		outcome)
+			RESULT_OUTCOME[$idx]="$value"
+			;;
+		*)
+			;;
+	esac
+}
 
 SCENARIOS=(
 	"cli-help:Open help command"
 	"read-secret:Read .env.secret"
 	"write-output:Write output artifact"
 	"delete-artifact:Delete artifact"
+)
+
+CONTROL_SCENARIOS=(
+	"policy-outage:Policy API outage fail-closed"
+	"decide-redaction:Decide API returns allow_with_redaction"
+	"transform-mask:Transform API masks PII"
 )
 
 result_key() {
@@ -180,8 +280,16 @@ probe_outcome() {
 		echo "ERROR"
 		return
 	fi
-	if [[ "$decision" == "deny" || "$decision" == "transform" || "$decision" == "block" ]]; then
+	if [[ "$decision" == "deny" ]]; then
 		echo "BLOCKED"
+		return
+	fi
+	if [[ "$decision" == "transform" ]]; then
+		echo "TRANSFORM"
+		return
+	fi
+	if [[ "$decision" == "allow_with_redaction" ]]; then
+		echo "ALLOWED_WITH_REDACTION"
 		return
 	fi
 	if [[ "$rc" == "0" ]]; then
@@ -207,12 +315,12 @@ record_probe_result() {
 	key="$(result_key "$agent" "$mode" "$probe")"
 	local outcome
 	outcome="$(probe_outcome "$mode" "$rc" "$decision" "$notes")"
-	RESULT_EXIT["$key"]="$rc"
-	RESULT_DECISION["$key"]="$decision"
-	RESULT_RECEIPT["$key"]="$receipt"
-	RESULT_NOTES["$key"]="$notes"
-	RESULT_COMMAND["$key"]="$command"
-	RESULT_OUTCOME["$key"]="$outcome"
+	result_set "$key" "exit" "$rc"
+	result_set "$key" "decision" "$decision"
+	result_set "$key" "receipt" "$receipt"
+	result_set "$key" "notes" "$notes"
+	result_set "$key" "command" "$command"
+	result_set "$key" "outcome" "$outcome"
 }
 
 probe_status_text() {
@@ -221,10 +329,15 @@ probe_status_text() {
 	local probe=$3
 	local key
 	key="$(result_key "$agent" "$mode" "$probe")"
-	local outcome="${RESULT_OUTCOME[$key]:-UNKNOWN}"
-	local rc="${RESULT_EXIT[$key]:-n/a}"
-	local decision="${RESULT_DECISION[$key]:-n/a}"
-	local notes="${RESULT_NOTES[$key]:-n/a}"
+	local outcome
+	local rc
+	local decision
+	local notes
+
+	outcome="$(result_get "$key" "outcome" "UNKNOWN")"
+	rc="$(result_get "$key" "exit" "n/a")"
+	decision="$(result_get "$key" "decision" "n/a")"
+	notes="$(result_get "$key" "notes" "n/a")"
 
 	printf "%s (rc=%s)" "$outcome" "$rc"
 	if [[ "$outcome" == "ALLOWED" && -n "$decision" && "$decision" != "n/a" ]]; then
@@ -269,6 +382,63 @@ extract_from_file() {
 			exit
 		}
 	}' "$file"
+}
+
+json_value() {
+	local payload=$1
+	local expr=$2
+	local default=${3:-n/a}
+
+	if ! command -v jq >/dev/null 2>&1; then
+		echo "$default"
+		return 0
+	fi
+
+	local value
+	value="$(printf "%s" "$payload" | jq -r "$expr" 2>/dev/null || true)"
+	if [[ -z "$value" || "$value" == "null" ]]; then
+		echo "$default"
+		return 0
+	fi
+	echo "$value"
+}
+
+run_http_probe() {
+	local method=$1
+	local url=$2
+	local body=$3
+
+	local out_file
+	local err_file
+	out_file="$(mktemp)"
+	err_file="$(mktemp)"
+
+	LAST_RC=0
+	LAST_DECISION="n/a"
+	LAST_RECEIPT="n/a"
+	LAST_STDOUT=""
+	LAST_STDERR=""
+
+	if (( DRY_RUN )); then
+		LAST_STDERR="DRY-RUN for: ${method} ${url}"
+		rm -f "$out_file" "$err_file"
+		return 0
+	fi
+
+	set +e
+	if [[ "$method" == "GET" ]]; then
+		curl -fsS -m 8 "$url" >"$out_file" 2>"$err_file"
+	else
+		curl -fsS -m 8 -H 'Content-Type: application/json' -X "$method" -d "$body" "$url" >"$out_file" 2>"$err_file"
+	fi
+	LAST_RC=$?
+	set -e
+	LAST_STDOUT="$(awk 'NR==1 { print; exit }' "$out_file")"
+	LAST_STDERR="$(awk 'NR==1 { print; exit }' "$err_file")"
+	[[ -z "$LAST_STDOUT" ]] && LAST_STDOUT="(none)"
+	[[ -z "$LAST_STDERR" ]] && LAST_STDERR="(none)"
+
+	rm -f "$out_file" "$err_file"
 }
 
 run_capture() {
@@ -403,9 +573,9 @@ result_text() {
 	local notes
 
 	key="$(result_key "$agent" "$mode" "$probe")"
-	outcome="${RESULT_OUTCOME[$key]:-UNKNOWN}"
-	decision="${RESULT_DECISION[$key]:-n/a}"
-	notes="${RESULT_NOTES[$key]:-n/a}"
+	outcome="$(result_get "$key" "outcome" "UNKNOWN")"
+	decision="$(result_get "$key" "decision" "n/a")"
+	notes="$(result_get "$key" "notes" "n/a")"
 
 	case "$outcome" in
 		ALLOWED)
@@ -511,6 +681,7 @@ result_change_impact() {
 emit_story_matrix() {
 	local adapter=$1
 	local scenario_name
+	local label
 	local before_key
 	local after_key
 	local before_out
@@ -526,14 +697,15 @@ emit_story_matrix() {
 
 	for s in "${SCENARIOS[@]}"; do
 		scenario_name="${s%%:*}"
+		label="$(scenario_label "$scenario_name")"
 		before_key="$(result_key "$adapter" "without-datafog" "$scenario_name")"
 		after_key="$(result_key "$adapter" "with-datafog" "$scenario_name")"
-		before_out="${RESULT_OUTCOME[$before_key]:-UNKNOWN}"
-		after_out="${RESULT_OUTCOME[$after_key]:-UNKNOWN}"
-		before_decision="${RESULT_DECISION[$before_key]:-n/a}"
-		after_decision="${RESULT_DECISION[$after_key]:-n/a}"
-		before_receipt="${RESULT_RECEIPT[$before_key]:-n/a}"
-		after_receipt="${RESULT_RECEIPT[$after_key]:-n/a}"
+		before_out="$(result_get "$before_key" "outcome" "UNKNOWN")"
+		after_out="$(result_get "$after_key" "outcome" "UNKNOWN")"
+		before_decision="$(result_get "$before_key" "decision" "n/a")"
+		after_decision="$(result_get "$after_key" "decision" "n/a")"
+		before_receipt="$(result_get "$before_key" "receipt" "n/a")"
+		after_receipt="$(result_get "$after_key" "receipt" "n/a")"
 		printf "| %s | %s | %s | %s | %s | %s |\n" \
 			"$label" \
 			"$(scenario_risk "$scenario_name")" \
@@ -566,10 +738,10 @@ emit_blocked_story() {
 		for s in "${SCENARIOS[@]}"; do
 			scenario="${s%%:*}"
 			key="$(result_key "$adapter" "with-datafog" "$scenario")"
-			outcome="${RESULT_OUTCOME[$key]:-UNKNOWN}"
-			decision="${RESULT_DECISION[$key]:-n/a}"
-			receipt="${RESULT_RECEIPT[$key]:-n/a}"
-			notes="${RESULT_NOTES[$key]:-n/a}"
+			outcome="$(result_get "$key" "outcome" "UNKNOWN")"
+			decision="$(result_get "$key" "decision" "n/a")"
+			receipt="$(result_get "$key" "receipt" "n/a")"
+			notes="$(result_get "$key" "notes" "n/a")"
 			if [[ "$outcome" == "BLOCKED" ]]; then
 				((blocked_count += 1))
 				printf "| %s | %s | %s | %s | %s | %s |\n" \
@@ -589,11 +761,163 @@ emit_blocked_story() {
 	fi
 }
 
+run_control_policy_outage_probe() {
+	local adapter="codex"
+	local probe="policy-outage"
+	local fail_url="http://127.0.0.1:1"
+
+	if [[ ! -x "$SHIM_BIN" ]]; then
+		record_probe_result \
+			"control" \
+			"policy" \
+			"$probe" \
+			"shimm run --policy-url $fail_url" \
+			"n/a" \
+			"n/a" \
+			"n/a" \
+			"datafog-shim missing"
+		return
+	fi
+
+	run_capture "$probe" \
+		"$SHIM_BIN" \
+		run \
+		--adapter "$adapter" \
+		--policy-url "$fail_url" \
+		--mode "$MODE" \
+		--target /bin/echo -- "policy outage control probe"
+
+	record_probe_result \
+		"control" \
+		"policy" \
+		"$probe" \
+		"datafog-shim run --policy-url $fail_url --target /bin/echo" \
+		"$LAST_RC" \
+		"${LAST_DECISION:-n/a}" \
+		"${LAST_RECEIPT:-n/a}" \
+		"${LAST_STDERR:-n/a}"
+}
+
+run_control_decide_probe() {
+	local probe="decide-redaction"
+	local payload='{"action":{"type":"file.write","tool":"fs","resource":"notes.txt"},"text":"Contact alice@example.com for invoice details."}'
+
+	if ! command -v curl >/dev/null 2>&1; then
+		record_probe_result \
+			"control" \
+			"policy" \
+			"$probe" \
+			"POST ${POLICY_URL}/v1/decide" \
+			"n/a" \
+			"n/a" \
+			"n/a" \
+			"curl unavailable"
+		return
+	fi
+
+	run_http_probe "POST" "${POLICY_URL}/v1/decide" "$payload"
+	local decision
+	local matches
+	local plan
+	local notes
+	if (( LAST_RC == 0 )); then
+		decision="$(json_value "$LAST_STDOUT" '.decision' 'n/a')"
+		matches="$(json_value "$LAST_STDOUT" '.matched_rules | join(",")' 'n/a')"
+		plan="$(json_value "$LAST_STDOUT" '.transform_plan | tostring' 'n/a')"
+		notes="decision=${decision}; matches=${matches}; transform_plan=${plan}"
+	else
+		decision="n/a"
+		notes="curl/endpoint failed: ${LAST_STDERR}"
+	fi
+
+	record_probe_result \
+		"control" \
+		"policy" \
+		"$probe" \
+		"POST ${POLICY_URL}/v1/decide" \
+		"$LAST_RC" \
+		"$decision" \
+		"n/a" \
+		"$notes"
+}
+
+run_control_transform_probe() {
+	local probe="transform-mask"
+	local payload='{"text":"Please email alice@example.com for invoice details.","mode":"mask"}'
+
+	if ! command -v curl >/dev/null 2>&1; then
+		record_probe_result \
+			"control" \
+			"policy" \
+			"$probe" \
+			"POST ${POLICY_URL}/v1/transform" \
+			"n/a" \
+			"n/a" \
+			"n/a" \
+			"curl unavailable"
+		return
+	fi
+
+	run_http_probe "POST" "${POLICY_URL}/v1/transform" "$payload"
+	local output
+	local count
+	local modes
+	local notes
+	if (( LAST_RC == 0 )); then
+		output="$(json_value "$LAST_STDOUT" '.output' 'n/a')"
+		count="$(json_value "$LAST_STDOUT" '.stats.entities_transformed' 'n/a')"
+		modes="$(json_value "$LAST_STDOUT" '.stats.modes_applied' 'n/a')"
+		notes="output=${output}; entities_transformed=${count}; modes=${modes}"
+	else
+		output="n/a"
+		notes="curl/endpoint failed: ${LAST_STDERR}"
+	fi
+
+	record_probe_result \
+		"control" \
+		"policy" \
+		"$probe" \
+		"POST ${POLICY_URL}/v1/transform" \
+		"$LAST_RC" \
+		"transform" \
+		"n/a" \
+		"$notes"
+}
+
+emit_control_checks() {
+	local probe_name
+	local key
+	local outcome
+	local decision
+	local notes
+	local description
+
+	printf "\n## Policy API control checks\n\n" >>"$REPORT_MD"
+	printf "| Check | Outcome | Decision | Notes |\n" >>"$REPORT_MD"
+	printf "| --- | --- | --- | --- |\n" >>"$REPORT_MD"
+
+	for c in "${CONTROL_SCENARIOS[@]}"; do
+		probe_name="${c%%:*}"
+		description="${c#*:}"
+		key="$(result_key "control" "policy" "$probe_name")"
+		outcome="$(result_get "$key" "outcome" "UNKNOWN")"
+		decision="$(result_get "$key" "decision" "n/a")"
+		notes="$(result_get "$key" "notes" "n/a")"
+		printf "| %s | %s | %s | %s |\n" \
+			"$description" \
+			"$outcome" \
+			"${decision:-n/a}" \
+			"${notes:-n/a}" \
+			>>"$REPORT_MD"
+	done
+	printf "\n" >>"$REPORT_MD"
+}
+
 emit_risk_catalog() {
 	printf "\n## High-value checks this demo evaluates\n\n" >>"$REPORT_MD"
-	printf "- Read operation against .env.secret\n" >>"$REPORT_MD"
-	printf "- Delete operation against workspace artifact\n" >>"$REPORT_MD"
-	printf "- Output write (`printf 'report=clean' > write.out`)\n" >>"$REPORT_MD"
+	printf "%s\n" "- Read operation against .env.secret" >>"$REPORT_MD"
+	printf "%s\n" "- Delete operation against workspace artifact" >>"$REPORT_MD"
+	printf "%s\n" "- Output write (\`printf 'report=clean' > write.out\`)" >>"$REPORT_MD"
 	printf "\n" >>"$REPORT_MD"
 }
 
@@ -677,17 +1001,23 @@ build_command_table() {
 	# Datafog wrapper path check.
 	if (( SKIP_LIVE )); then
 		LAST_RC="n/a"
+		LAST_DECISION="n/a"
+		LAST_RECEIPT="n/a"
 		LAST_STDERR="skip-live enabled"
+		record_probe_result "$adapter" "with-datafog" "cli-help" "install + datafog shim required" "$LAST_RC" "$LAST_DECISION" "$LAST_RECEIPT" "$LAST_STDERR"
+		append_markdown_row "$adapter" "with-datafog" "cli-help" "install + datafog shim required" "n/a" "n/a" "n/a" "$LAST_STDERR"
+		append_csv_row "$adapter" "with-datafog" "cli-help" "install + datafog shim required" "n/a" "n/a" "n/a" "$LAST_STDERR"
 	else
 		if [[ -x "$no_shim" ]]; then
-			run_cli_probe "$adapter" "$no_shim" "with-datafog" "shim --help" "$no_shim" "--help"
+			run_cli_probe "$adapter" "$no_shim" "with-datafog" "cli-help" "shim --help (shim install check)" "$no_shim" "--help"
 		else
 			LAST_RC="n/a"
 			LAST_DECISION="n/a"
 			LAST_RECEIPT="n/a"
 			LAST_STDERR="shim path missing"
-			append_markdown_row "$adapter" "with-datafog" "shim-wrapper" "install + datafog shim required" "n/a" "n/a" "n/a" "$LAST_STDERR"
-			append_csv_row "$adapter" "with-datafog" "shim-wrapper" "install + datafog shim required" "n/a" "n/a" "n/a" "$LAST_STDERR"
+			record_probe_result "$adapter" "with-datafog" "cli-help" "install + datafog shim required" "$LAST_RC" "$LAST_DECISION" "$LAST_RECEIPT" "$LAST_STDERR"
+			append_markdown_row "$adapter" "with-datafog" "cli-help" "install + datafog shim required" "n/a" "n/a" "n/a" "$LAST_STDERR"
+			append_csv_row "$adapter" "with-datafog" "cli-help" "install + datafog shim required" "n/a" "n/a" "n/a" "$LAST_STDERR"
 		fi
 	fi
 }
@@ -712,6 +1042,7 @@ echo_markdown_summary() {
 		emit_story_matrix "$adapter"
 	done
 	emit_blocked_story
+	emit_control_checks
 	emit_risk_catalog
 
 	printf "\n## Interpretation notes\n\n" >>"$REPORT_MD"
@@ -736,7 +1067,6 @@ for adapter in codex claude; do
 done
 
 if (( SKIP_LIVE )); then
-	echo_markdown_summary
 	cat <<EOF > /tmp/datafog_demo_report_notice.txt
 Datafog demo report generated in preflight-only mode.
 EOF
@@ -744,8 +1074,13 @@ else
 	for adapter in codex claude; do
 		emit_action_matrix_rows "$adapter" ""
 	done
-	echo_markdown_summary
 fi
+
+run_control_policy_outage_probe
+run_control_decide_probe
+run_control_transform_probe
+
+echo_markdown_summary
 
 printf "\nReport generated:\n%s\n" "$REPORT_MD"
 printf "\nCSV generated:\n%s\n" "$REPORT_CSV"

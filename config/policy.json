@@ -1,46 +1,59 @@
 {
   "policy_id": "datafog-mvp",
   "policy_version": "v2026-02-23-1",
-  "description": "MVP policy with deterministic action + entity gating",
+  "description": "Demo policy for observable CLI-gated command.exec control",
   "updated_at": "2026-02-23T00:00:00Z",
   "rules": [
     {
-      "id": "deny-shell-api-key",
-      "description": "Deny shell actions when API key is present in payload",
+      "id": "allow-codex-help",
+      "description": "Allow codex help command",
       "priority": 100,
-      "effect": "deny",
+      "effect": "allow",
       "match": {
-        "action_types": ["shell.exec"]
-      },
-      "entity_requirements": ["api_key"]
+        "action_types": ["command.exec"],
+        "tools": ["codex"],
+        "commands": ["--help"]
+      }
     },
     {
-      "id": "transform-sensitive-file-write",
-      "description": "Redact sensitive entities before file writes",
+      "id": "allow-claude-help",
+      "description": "Allow claude help command",
+      "priority": 100,
+      "effect": "allow",
+      "match": {
+        "action_types": ["command.exec"],
+        "tools": ["claude"],
+        "commands": ["--help"]
+      }
+    },
+    {
+      "id": "transform-fs-file-write-email",
+      "description": "Apply email masking transform for file writes",
       "priority": 80,
       "effect": "allow_with_redaction",
       "match": {
-        "action_types": ["file.write", "http.request", "shell.exec"]
+        "action_types": ["file.write"],
+        "tools": ["fs"]
       },
-      "entity_requirements": ["email", "phone", "ssn", "api_key", "credit_card"]
+      "entity_requirements": ["email"],
+      "entity_transforms": [
+        {
+          "entity_type": "email",
+          "mode": "mask"
+        }
+      ]
     },
     {
-      "id": "allow-file-read",
-      "description": "Allow reads from files",
-      "priority": 40,
-      "effect": "allow",
+      "id": "deny-shell-like-tooling",
+      "description": "Block shell-style invocation paths from agent actions",
+      "priority": 90,
+      "effect": "deny",
       "match": {
-        "action_types": ["file.read"]
-      }
-    },
-    {
-      "id": "allow-annotate",
-      "description": "Allow annotation-only action to support non-side-effect checks",
-      "priority": 10,
-      "effect": "allow",
-      "match": {
-        "action_types": ["annotation.default", "annotation.custom"]
-      }
+        "action_types": ["command.exec"],
+        "tools": ["codex", "claude"],
+        "commands": ["-lc"]
+      },
+      "entity_requirements": []
     }
   ]
 }
