@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DataFog API Demo</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;line-height:1.5}
+.header{background:#1e293b;border-bottom:1px solid #334155;padding:12px 24px;display:flex;align-items:center;justify-content:space-between}
+.header h1{font-size:18px;font-weight:600;color:#f8fafc}
+.header h1 span{color:#38bdf8}
+.status{display:flex;align-items:center;gap:8px;font-size:13px;color:#94a3b8}
+.status .dot{width:8px;height:8px;border-radius:50%;background:#ef4444}
+.status .dot.ok{background:#22c55e}
+.container{max-width:1200px;margin:0 auto;padding:24px}
+.input-section{margin-bottom:24px}
+.input-section label{font-size:13px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:8px}
+textarea{width:100%;height:120px;background:#1e293b;border:1px solid #334155;border-radius:8px;color:#f8fafc;padding:12px;font-family:'Cascadia Code',monospace,monospace;font-size:14px;resize:vertical}
+textarea:focus{outline:none;border-color:#38bdf8}
+.actions{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;align-items:center}
+button{padding:8px 16px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:13px;font-weight:500;cursor:pointer;transition:all .15s}
+button:hover{background:#334155}
+button.primary{background:#2563eb;border-color:#2563eb;color:#fff}
+button.primary:hover{background:#1d4ed8}
+button:disabled{opacity:.5;cursor:not-allowed}
+.panels{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.panel{background:#1e293b;border:1px solid #334155;border-radius:8px;overflow:hidden}
+.panel-head{padding:10px 16px;border-bottom:1px solid #334155;display:flex;align-items:center;justify-content:space-between}
+.panel-head h2{font-size:14px;font-weight:600;color:#f8fafc}
+.panel-head .timing{font-size:12px;color:#64748b}
+.panel-body{padding:16px;font-size:13px;min-height:120px;max-height:400px;overflow-y:auto}
+.panel.full{grid-column:1/-1}
+.badge{display:inline-block;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;margin-right:4px}
+.badge-email{background:#1e3a5f;color:#38bdf8}
+.badge-phone{background:#1a3a2a;color:#4ade80}
+.badge-ssn{background:#3b1f1f;color:#f87171}
+.badge-api_key{background:#3b2f1f;color:#fb923c}
+.badge-credit_card{background:#2d1f3b;color:#c084fc}
+.finding{padding:8px 12px;background:#0f172a;border-radius:6px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between}
+.finding .left{display:flex;align-items:center;gap:8px}
+.finding .val{font-family:monospace;color:#f8fafc}
+.finding .conf{font-size:11px;color:#64748b}
+.decision-box{padding:16px;border-radius:8px;text-align:center;font-size:16px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.decision-allow{background:#052e16;color:#22c55e;border:1px solid #166534}
+.decision-deny{background:#2d0a0a;color:#ef4444;border:1px solid #7f1d1d}
+.decision-transform{background:#1a1a3e;color:#818cf8;border:1px solid #3730a3}
+.decision-allow_with_redaction{background:#172538;color:#38bdf8;border:1px solid #1e3a5f}
+.meta{margin-top:12px;font-size:12px;color:#94a3b8}
+.meta span{display:inline-block;margin-right:12px}
+.action-fields{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
+.action-fields label{font-size:11px;color:#94a3b8;display:block;margin-bottom:2px}
+.action-fields input,.action-fields select{background:#0f172a;border:1px solid #334155;border-radius:4px;color:#f8fafc;padding:4px 8px;font-size:12px;width:140px}
+.action-fields input:focus,.action-fields select:focus{outline:none;border-color:#38bdf8}
+.mode-tabs{display:flex;gap:4px;margin-bottom:12px}
+.mode-tab{padding:6px 12px;border-radius:4px;font-size:12px;cursor:pointer;border:1px solid #334155;background:#0f172a;color:#94a3b8}
+.mode-tab.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.diff{font-family:monospace;font-size:13px;white-space:pre-wrap;word-break:break-all;line-height:1.8}
+.diff .removed{background:#5c1a1a;color:#fca5a5;text-decoration:line-through;padding:1px 2px;border-radius:2px}
+.diff .added{background:#14532d;color:#86efac;padding:1px 2px;border-radius:2px}
+.highlight-text{font-family:monospace;font-size:13px;white-space:pre-wrap;word-break:break-all;line-height:1.8}
+.hl{padding:1px 3px;border-radius:3px;border-bottom:2px solid}
+.hl-email{background:#1e3a5f55;border-color:#38bdf8}
+.hl-phone{background:#1a3a2a55;border-color:#4ade80}
+.hl-ssn{background:#3b1f1f55;border-color:#f87171}
+.hl-api_key{background:#3b2f1f55;border-color:#fb923c}
+.hl-credit_card{background:#2d1f3b55;border-color:#c084fc}
+.error-box{background:#2d0a0a;border:1px solid #7f1d1d;color:#fca5a5;padding:12px;border-radius:6px;font-size:13px}
+.loading{color:#64748b;font-style:italic}
+.stats{margin-top:8px;font-size:12px;color:#64748b}
+.transform-output{font-family:monospace;font-size:13px;white-space:pre-wrap;word-break:break-all;line-height:1.8;background:#0f172a;padding:12px;border-radius:6px}
+.rule-tag{display:inline-block;padding:2px 8px;background:#312e81;color:#a5b4fc;border-radius:4px;font-size:11px;margin-right:4px;font-family:monospace}
+.plan-step{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#0f172a;border-radius:4px;font-size:12px;margin:2px 4px 2px 0}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1><span>DataFog</span> API Playground</h1>
+  <div class="status" id="status">
+    <div class="dot" id="statusDot"></div>
+    <span id="statusText">Connecting...</span>
+  </div>
+</div>
+<div class="container">
+  <div class="input-section">
+    <label>Input Text</label>
+    <textarea id="inputText">Dear John Smith,
+
+Your account (john.smith@acme-corp.com) has been flagged. Please verify your identity.
+
+SSN: 283-47-9102
+Phone: +1 415-555-0199
+Credit Card: 4111 1111 1111 1111
+
+Internal note: service token api_key=SK8xPw2mQ9nR4vT7yBcD3fGh to access staging environment.</textarea>
+  </div>
+
+  <div class="actions">
+    <button class="primary" onclick="runAll()" id="btnRunAll">Run All</button>
+    <button onclick="runScan()" id="btnScan">Scan</button>
+    <button onclick="runDecide()" id="btnDecide">Decide</button>
+    <button onclick="runTransform()" id="btnTransform">Transform</button>
+    <button onclick="resetAll()" style="margin-left:auto">Reset</button>
+  </div>
+
+  <div class="panels">
+    <!-- Scan Panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Scan Results</h2>
+        <span class="timing" id="scanTime"></span>
+      </div>
+      <div class="panel-body" id="scanBody">
+        <span class="loading">Click Scan or Run All to detect entities</span>
+      </div>
+    </div>
+
+    <!-- Highlighted Text Panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Highlighted Entities</h2>
+        <span class="timing" id="highlightInfo"></span>
+      </div>
+      <div class="panel-body" id="highlightBody">
+        <span class="loading">Entities will be highlighted after scanning</span>
+      </div>
+    </div>
+
+    <!-- Decide Panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Policy Decision</h2>
+        <span class="timing" id="decideTime"></span>
+      </div>
+      <div class="panel-body" id="decideBody">
+        <div class="action-fields">
+          <div><label>Action Type</label><select id="actionType">
+            <option value="shell.exec">shell.exec</option>
+            <option value="file.write">file.write</option>
+            <option value="file.read">file.read</option>
+            <option value="http.request">http.request</option>
+            <option value="annotation.default">annotation.default</option>
+          </select></div>
+          <div><label>Tool</label><input id="actionTool" value="git" placeholder="e.g. git"></div>
+          <div><label>Command</label><input id="actionCommand" value="push" placeholder="e.g. push"></div>
+        </div>
+        <span class="loading">Click Decide or Run All to evaluate policy</span>
+      </div>
+    </div>
+
+    <!-- Transform Panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <h2>Transform Output</h2>
+        <span class="timing" id="transformTime"></span>
+      </div>
+      <div class="panel-body" id="transformBody">
+        <div class="mode-tabs" id="modeTabs">
+          <div class="mode-tab active" data-mode="mask" onclick="selectMode(this)">Mask</div>
+          <div class="mode-tab" data-mode="redact" onclick="selectMode(this)">Redact</div>
+          <div class="mode-tab" data-mode="tokenize" onclick="selectMode(this)">Tokenize</div>
+          <div class="mode-tab" data-mode="anonymize" onclick="selectMode(this)">Anonymize</div>
+        </div>
+        <span class="loading" id="transformPlaceholder">Click Transform or Run All</span>
+        <div id="transformResult" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- Diff Panel -->
+    <div class="panel full">
+      <div class="panel-head">
+        <h2>All Modes Comparison</h2>
+      </div>
+      <div class="panel-body" id="compareBody">
+        <span class="loading">Run All to see all transform modes side by side</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = 'http://localhost:8080';
+let lastFindings = [];
+let lastScanText = '';
+let currentMode = 'mask';
+
+async function api(method, path, body) {
+  const opts = { method, headers: {} };
+  if (body) {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body);
+  }
+  const t0 = performance.now();
+  const res = await fetch(API + path, opts);
+  const ms = Math.round(performance.now() - t0);
+  const data = await res.json();
+  if (!res.ok) throw { status: res.status, ...data };
+  return { data, ms };
+}
+
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function errorHtml(err) {
+  const msg = err?.error?.message || err?.message || String(err);
+  const code = err?.error?.code || err?.status || '';
+  return `<div class="error-box">${code ? `<strong>${esc(code)}</strong>: ` : ''}${esc(msg)}</div>`;
+}
+
+// Health check
+async function checkHealth() {
+  try {
+    const { data } = await api('GET', '/health');
+    document.getElementById('statusDot').classList.add('ok');
+    document.getElementById('statusText').textContent =
+      `Connected \u2022 ${data.policy_id} ${data.policy_version}`;
+    console.log('[datafog-demo] health OK', data);
+  } catch (e) {
+    document.getElementById('statusText').textContent = 'Server unreachable';
+    console.error('[datafog-demo] health failed', e);
+  }
+}
+
+// Scan
+async function runScan() {
+  const text = document.getElementById('inputText').value;
+  const body = document.getElementById('scanBody');
+  const hlBody = document.getElementById('highlightBody');
+  body.innerHTML = '<span class="loading">Scanning...</span>';
+  hlBody.innerHTML = '<span class="loading">Scanning...</span>';
+  disableButtons(true);
+  try {
+    const { data, ms } = await api('POST', '/v1/scan', { text });
+    document.getElementById('scanTime').textContent = `${ms}ms`;
+    lastFindings = data.findings || [];
+    lastScanText = text;
+    console.log(`[datafog-demo] scan: ${lastFindings.length} findings in ${ms}ms`, data);
+
+    if (lastFindings.length === 0) {
+      body.innerHTML = '<span class="loading">No entities detected</span>';
+      hlBody.innerHTML = '<span class="loading">No entities to highlight</span>';
+      document.getElementById('highlightInfo').textContent = '0 entities';
+      return;
+    }
+
+    // Findings list
+    body.innerHTML = lastFindings.map(f => `
+      <div class="finding">
+        <div class="left">
+          <span class="badge badge-${f.entity_type}">${f.entity_type}</span>
+          <span class="val">${esc(f.value)}</span>
+        </div>
+        <span class="conf">${(f.confidence * 100).toFixed(1)}%</span>
+      </div>`).join('');
+
+    // Highlighted text
+    const sorted = [...lastFindings].sort((a, b) => a.start - b.start);
+    let html = '';
+    let pos = 0;
+    for (const f of sorted) {
+      if (f.start > pos) html += esc(text.slice(pos, f.start));
+      html += `<span class="hl hl-${f.entity_type}" title="${f.entity_type} (${(f.confidence*100).toFixed(1)}%)">${esc(text.slice(f.start, f.end))}</span>`;
+      pos = f.end;
+    }
+    if (pos < text.length) html += esc(text.slice(pos));
+    hlBody.innerHTML = `<div class="highlight-text">${html}</div>`;
+    document.getElementById('highlightInfo').textContent = `${lastFindings.length} entities`;
+  } catch (e) {
+    body.innerHTML = errorHtml(e);
+    hlBody.innerHTML = '';
+    console.error('[datafog-demo] scan error', e);
+  } finally {
+    disableButtons(false);
+  }
+}
+
+// Decide
+async function runDecide() {
+  const text = document.getElementById('inputText').value;
+  const container = document.getElementById('decideBody');
+  const fields = container.querySelector('.action-fields');
+  const actionType = document.getElementById('actionType').value;
+  const tool = document.getElementById('actionTool').value;
+  const command = document.getElementById('actionCommand').value;
+
+  // Keep fields, replace rest
+  const rest = container.querySelectorAll(':scope > :not(.action-fields)');
+  rest.forEach(el => el.remove());
+  container.insertAdjacentHTML('beforeend', '<span class="loading">Evaluating policy...</span>');
+  disableButtons(true);
+
+  try {
+    const payload = {
+      action: { type: actionType, tool, command },
+      text,
+      findings: lastFindings.length > 0 ? lastFindings : undefined
+    };
+    const { data, ms } = await api('POST', '/v1/decide', payload);
+    document.getElementById('decideTime').textContent = `${ms}ms`;
+    console.log(`[datafog-demo] decide: ${data.decision} in ${ms}ms`, data);
+
+    const rest2 = container.querySelectorAll(':scope > :not(.action-fields)');
+    rest2.forEach(el => el.remove());
+
+    let html = `<div class="decision-box decision-${data.decision}">${data.decision.replace(/_/g, ' ')}</div>`;
+
+    if (data.reason) {
+      html += `<div class="meta" style="margin-top:12px"><strong>Reason:</strong> ${esc(data.reason)}</div>`;
+    }
+
+    if (data.matched_rules && data.matched_rules.length) {
+      html += `<div class="meta"><strong>Rules:</strong> ${data.matched_rules.map(r => `<span class="rule-tag">${esc(r)}</span>`).join('')}</div>`;
+    }
+
+    if (data.transform_plan && data.transform_plan.length) {
+      html += `<div class="meta"><strong>Transform plan:</strong> ${data.transform_plan.map(s => `<span class="plan-step"><span class="badge badge-${s.entity_type}">${s.entity_type}</span> \u2192 ${s.mode}</span>`).join('')}</div>`;
+    }
+
+    html += `<div class="meta"><span>Receipt: <code>${data.receipt_id || 'n/a'}</code></span></div>`;
+    container.insertAdjacentHTML('beforeend', html);
+  } catch (e) {
+    const rest2 = container.querySelectorAll(':scope > :not(.action-fields)');
+    rest2.forEach(el => el.remove());
+    container.insertAdjacentHTML('beforeend', errorHtml(e));
+    console.error('[datafog-demo] decide error', e);
+  } finally {
+    disableButtons(false);
+  }
+}
+
+// Transform
+async function runTransform(mode) {
+  mode = mode || currentMode;
+  const text = document.getElementById('inputText').value;
+  const placeholder = document.getElementById('transformPlaceholder');
+  const result = document.getElementById('transformResult');
+  if (placeholder) placeholder.style.display = '';
+  if (placeholder) placeholder.textContent = 'Transforming...';
+  result.style.display = 'none';
+  disableButtons(true);
+
+  try {
+    const payload = { text, mode };
+    if (lastFindings.length > 0) payload.findings = lastFindings;
+    const { data, ms } = await api('POST', '/v1/transform', payload);
+    document.getElementById('transformTime').textContent = `${ms}ms`;
+    console.log(`[datafog-demo] transform (${mode}): ${ms}ms`, data);
+
+    if (placeholder) placeholder.style.display = 'none';
+    result.style.display = '';
+    result.innerHTML = `<div class="transform-output">${esc(data.output)}</div>
+      <div class="stats">Entities transformed: ${data.stats?.entities_transformed || 0} \u2022 ${data.stats?.modes_applied || 'none'}</div>`;
+  } catch (e) {
+    if (placeholder) placeholder.style.display = 'none';
+    result.style.display = '';
+    result.innerHTML = errorHtml(e);
+    console.error('[datafog-demo] transform error', e);
+  } finally {
+    disableButtons(false);
+  }
+}
+
+function selectMode(el) {
+  document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  currentMode = el.dataset.mode;
+  // If we already have results, re-run
+  if (document.getElementById('transformResult').style.display !== 'none') {
+    runTransform(currentMode);
+  }
+}
+
+// Run All
+async function runAll() {
+  console.log('[datafog-demo] === Run All started ===');
+  await runScan();
+  await runDecide();
+  // Run all 4 modes for comparison
+  const text = document.getElementById('inputText').value;
+  const modes = ['mask', 'redact', 'tokenize', 'anonymize'];
+  const results = {};
+  for (const m of modes) {
+    try {
+      const payload = { text, mode: m };
+      if (lastFindings.length > 0) payload.findings = lastFindings;
+      const { data, ms } = await api('POST', '/v1/transform', payload);
+      results[m] = { output: data.output, ms, stats: data.stats };
+      console.log(`[datafog-demo] transform (${m}): ${ms}ms`);
+    } catch (e) {
+      results[m] = { error: e };
+    }
+  }
+
+  // Update single transform panel with current mode
+  const cur = results[currentMode];
+  if (cur && !cur.error) {
+    document.getElementById('transformPlaceholder').style.display = 'none';
+    const result = document.getElementById('transformResult');
+    result.style.display = '';
+    result.innerHTML = `<div class="transform-output">${esc(cur.output)}</div>
+      <div class="stats">Entities transformed: ${cur.stats?.entities_transformed || 0} \u2022 ${cur.stats?.modes_applied || 'none'}</div>`;
+    document.getElementById('transformTime').textContent = `${cur.ms}ms`;
+  }
+
+  // Comparison panel
+  const compare = document.getElementById('compareBody');
+  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">';
+  for (const m of modes) {
+    const r = results[m];
+    html += `<div><div style="margin-bottom:6px"><span class="mode-tab active" style="cursor:default">${m}</span> <span style="font-size:11px;color:#64748b">${r.error ? 'error' : r.ms + 'ms'}</span></div>`;
+    if (r.error) {
+      html += errorHtml(r.error);
+    } else {
+      html += `<div class="transform-output" style="font-size:12px">${esc(r.output)}</div>`;
+    }
+    html += '</div>';
+  }
+  html += '</div>';
+  compare.innerHTML = html;
+  console.log('[datafog-demo] === Run All complete ===');
+}
+
+function resetAll() {
+  lastFindings = [];
+  lastScanText = '';
+  document.getElementById('scanBody').innerHTML = '<span class="loading">Click Scan or Run All to detect entities</span>';
+  document.getElementById('scanTime').textContent = '';
+  document.getElementById('highlightBody').innerHTML = '<span class="loading">Entities will be highlighted after scanning</span>';
+  document.getElementById('highlightInfo').textContent = '';
+  // Reset decide panel - keep fields
+  const decideBody = document.getElementById('decideBody');
+  const rest = decideBody.querySelectorAll(':scope > :not(.action-fields)');
+  rest.forEach(el => el.remove());
+  decideBody.insertAdjacentHTML('beforeend', '<span class="loading">Click Decide or Run All to evaluate policy</span>');
+  document.getElementById('decideTime').textContent = '';
+  document.getElementById('transformPlaceholder').style.display = '';
+  document.getElementById('transformPlaceholder').textContent = 'Click Transform or Run All';
+  document.getElementById('transformResult').style.display = 'none';
+  document.getElementById('transformTime').textContent = '';
+  document.getElementById('compareBody').innerHTML = '<span class="loading">Run All to see all transform modes side by side</span>';
+  console.log('[datafog-demo] reset');
+}
+
+function disableButtons(disabled) {
+  document.querySelectorAll('.actions button').forEach(b => b.disabled = disabled);
+}
+
+checkHealth();
+
+// === Real Execution Demo ===
+// These functions call the /demo/* endpoints which run through the actual shim gate
+
+async function demoExec() {
+  const cmd = document.getElementById('demoCmd').value.trim();
+  if (!cmd) return;
+  const parts = cmd.split(/\s+/);
+  const body = document.getElementById('demoExecBody');
+  body.innerHTML = '<span class="loading">Executing through shim gate...</span>';
+  const time = document.getElementById('demoExecTime');
+
+  try {
+    const { data, ms } = await api('POST', '/demo/exec', {
+      command: parts[0],
+      args: parts.slice(1),
+      stdin: document.getElementById('inputText').value
+    });
+    time.textContent = ms + 'ms';
+
+    let html = '';
+    // Decision
+    const cls = 'decision-' + (data.decision?.decision || 'deny');
+    html += `<div class="decision-box ${cls}">${esc(data.decision?.decision || 'unknown')}</div>`;
+    if (data.blocked) {
+      html += `<div class="meta" style="margin-top:8px;color:#f87171"><strong>BLOCKED:</strong> ${esc(data.error || 'Policy denied')}</div>`;
+    }
+    // Findings
+    if (data.findings && data.findings.length > 0) {
+      html += '<div style="margin-top:12px"><strong style="color:#94a3b8">PII Found:</strong></div>';
+      data.findings.forEach(f => {
+        const badge = `badge-${f.entity_type}`;
+        html += `<div class="finding"><div class="left"><span class="badge ${badge}">${esc(f.entity_type)}</span><span class="val">${esc(f.value)}</span></div><span class="conf">${(f.confidence*100).toFixed(1)}%</span></div>`;
+      });
+    }
+    // Output
+    if (data.stdout) {
+      html += `<div style="margin-top:12px"><strong style="color:#94a3b8">Output:</strong></div><div class="transform-output">${esc(data.stdout)}</div>`;
+    }
+    // Matched rules
+    if (data.decision?.matched_rules?.length > 0) {
+      html += `<div class="meta"><span>Rules: ${data.decision.matched_rules.join(', ')}</span></div>`;
+    }
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = errorHtml(e);
+    time.textContent = '';
+  }
+}
+
+async function demoWriteFile() {
+  const filename = document.getElementById('demoFilename').value.trim() || 'test.txt';
+  const content = document.getElementById('demoFileContent').value;
+  const body = document.getElementById('demoWriteBody');
+  body.innerHTML = '<span class="loading">Writing through shim gate...</span>';
+  const time = document.getElementById('demoWriteTime');
+
+  try {
+    const { data, ms } = await api('POST', '/demo/write-file', { filename, content });
+    time.textContent = ms + 'ms';
+
+    let html = '';
+    const cls = 'decision-' + (data.decision?.decision || 'deny');
+    html += `<div class="decision-box ${cls}">${esc(data.decision?.decision || 'unknown')}</div>`;
+    if (data.blocked) {
+      html += `<div class="meta" style="margin-top:8px;color:#f87171"><strong>BLOCKED:</strong> ${esc(data.error || 'Policy denied')}</div>`;
+    }
+    if (data.findings && data.findings.length > 0) {
+      html += '<div style="margin-top:12px"><strong style="color:#94a3b8">PII Found in content:</strong></div>';
+      data.findings.forEach(f => {
+        const badge = `badge-${f.entity_type}`;
+        html += `<div class="finding"><div class="left"><span class="badge ${badge}">${esc(f.entity_type)}</span><span class="val">${esc(f.value)}</span></div></div>`;
+      });
+    }
+    if (data.written) {
+      html += '<div style="margin-top:12px"><strong style="color:#22c55e">File written successfully</strong></div>';
+      if (data.content !== content) {
+        html += '<div style="margin-top:8px"><strong style="color:#38bdf8">Content was redacted:</strong></div>';
+        html += `<div class="transform-output">${esc(data.content)}</div>`;
+      } else {
+        html += `<div class="transform-output">${esc(data.content)}</div>`;
+      }
+    }
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = errorHtml(e);
+    time.textContent = '';
+  }
+}
+
+async function demoReadFile() {
+  const filename = document.getElementById('demoReadFilename').value.trim();
+  if (!filename) return;
+  const body = document.getElementById('demoReadBody');
+  body.innerHTML = '<span class="loading">Reading through shim gate...</span>';
+  const time = document.getElementById('demoReadTime');
+
+  try {
+    const { data, ms } = await api('POST', '/demo/read-file', { filename });
+    time.textContent = ms + 'ms';
+
+    let html = '';
+    const cls = 'decision-' + (data.decision?.decision || 'deny');
+    html += `<div class="decision-box ${cls}">${esc(data.decision?.decision || 'unknown')}</div>`;
+    if (data.blocked) {
+      html += `<div class="meta" style="margin-top:8px;color:#f87171"><strong>BLOCKED:</strong> ${esc(data.error || 'Policy denied')}</div>`;
+    } else {
+      html += `<div style="margin-top:12px"><strong style="color:#94a3b8">File content:</strong></div><div class="transform-output">${esc(data.content)}</div>`;
+    }
+    body.innerHTML = html;
+  } catch (e) {
+    body.innerHTML = errorHtml(e);
+    time.textContent = '';
+  }
+}
+</script>
+
+<!-- Real Execution Demo Section -->
+<div class="container" style="margin-top:0;padding-top:0">
+  <h2 style="color:#f8fafc;font-size:18px;margin-bottom:16px;padding-top:16px;border-top:1px solid #334155">
+    Real Execution Demo <span style="font-size:12px;color:#94a3b8;font-weight:400">(requires <code>--enable-demo</code> flag)</span>
+  </h2>
+  <p style="color:#94a3b8;font-size:13px;margin-bottom:16px">These panels execute real commands and file operations through the shim gate with actual policy enforcement.</p>
+
+  <div class="panels" style="grid-template-columns:1fr 1fr 1fr">
+    <!-- Command Execution -->
+    <div class="panel">
+      <div class="panel-head"><h2>Command Execution</h2><span class="timing" id="demoExecTime"></span></div>
+      <div class="panel-body">
+        <div style="margin-bottom:8px">
+          <input type="text" id="demoCmd" value="echo Hello World" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#f8fafc;padding:6px 8px;font-family:monospace;font-size:13px" placeholder="e.g. echo Hello World">
+        </div>
+        <button onclick="demoExec()" style="margin-bottom:12px">Execute</button>
+        <div id="demoExecBody"><span class="loading">Enter a command and click Execute</span></div>
+      </div>
+    </div>
+
+    <!-- File Write -->
+    <div class="panel">
+      <div class="panel-head"><h2>Write File</h2><span class="timing" id="demoWriteTime"></span></div>
+      <div class="panel-body">
+        <div style="margin-bottom:4px">
+          <input type="text" id="demoFilename" value="test.txt" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#f8fafc;padding:6px 8px;font-size:13px;margin-bottom:4px" placeholder="filename">
+          <textarea id="demoFileContent" rows="3" style="height:60px;font-size:12px" placeholder="Content to write...">Contact alice@example.com or call 555-123-4567. SSN: 123-45-6789</textarea>
+        </div>
+        <button onclick="demoWriteFile()" style="margin-bottom:12px">Write</button>
+        <div id="demoWriteBody"><span class="loading">Write content through the shim gate</span></div>
+      </div>
+    </div>
+
+    <!-- File Read -->
+    <div class="panel">
+      <div class="panel-head"><h2>Read File</h2><span class="timing" id="demoReadTime"></span></div>
+      <div class="panel-body">
+        <div style="margin-bottom:8px">
+          <input type="text" id="demoReadFilename" value="test.txt" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:4px;color:#f8fafc;padding:6px 8px;font-size:13px" placeholder="filename to read">
+        </div>
+        <button onclick="demoReadFile()" style="margin-bottom:12px">Read</button>
+        <div id="demoReadBody"><span class="loading">Read a file through the shim gate</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
