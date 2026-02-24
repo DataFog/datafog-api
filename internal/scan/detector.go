@@ -76,6 +76,8 @@ func ScanText(text string, entityFilter []string) []models.ScanFinding {
 	}
 
 	findings := make([]models.ScanFinding, 0)
+
+	// Phase 1: Regex engine (fast, always available)
 	entityTypes := make([]string, 0, len(DefaultEntityPatterns))
 	for entityType := range DefaultEntityPatterns {
 		entityTypes = append(entityTypes, entityType)
@@ -108,6 +110,10 @@ func ScanText(text string, entityFilter []string) []models.ScanFinding {
 			})
 		}
 	}
+
+	// Phase 2: NER engine (heuristic, when enabled)
+	nerFindings := ScanNER(text, entityFilter)
+	findings = append(findings, nerFindings...)
 
 	return findings
 }
